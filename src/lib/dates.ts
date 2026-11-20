@@ -29,25 +29,26 @@ export function monthEnd(ym: string): string {
 
 const parse = (date: string) => { const [y, m, d] = date.split("-").map(Number); return new Date(y, m - 1, d || 1); };
 
+export const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const mon = (ym: string) => Number(ym.slice(5, 7)) - 1;
+
 /** "November 2026" or, short, "Nov 2026" */
-export const monthLabel = (ym: string, short = false) =>
-  parse(ym).toLocaleDateString("en-GB", { month: short ? "short" : "long", year: "numeric" });
+export const monthLabel = (ym: string, short = false) => `${short ? MONTHS[mon(ym)].slice(0, 3) : MONTHS[mon(ym)]} ${ym.slice(0, 4)}`;
 
 /** "Nov '26", for chart axes */
-export const monthTick = (ym: string) => {
-  const d = parse(ym);
-  return `${d.toLocaleDateString("en-GB", { month: "short" })} '${String(d.getFullYear()).slice(2)}`;
-};
+export const monthTick = (ym: string) => `${MONTHS[mon(ym)].slice(0, 3)} '${ym.slice(2, 4)}`;
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** "Mon 16 Nov", with the year when it isn't this year */
 export function dayLabel(date: string): string {
   const d = parse(date);
   const sameYear = d.getFullYear() === new Date().getFullYear();
-  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) });
+  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}${sameYear ? "" : ` ${d.getFullYear()}`}`;
 }
 
 /** "16 Nov 2026" */
-export const shortDate = (date: string) => parse(date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+export const shortDate = (date: string) => { const d = parse(date); return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)} ${d.getFullYear()}`; };
 
 export function ago(t?: number) {
   if (!t) return "not yet";
@@ -56,5 +57,5 @@ export function ago(t?: number) {
   if (s < 60) return `${s} s ago`;
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86_400) return new Date(t).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return shortDate(dateStr(new Date(t)));
 }
