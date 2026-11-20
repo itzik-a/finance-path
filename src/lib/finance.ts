@@ -48,28 +48,39 @@ export function netWorth(s: AppState, date?: string): { total: number; asOf?: st
   return { total, asOf };
 }
 
-/** Months from the first balance to this month, with each source's value at each month's end
-    (the latest balance on or before it; 0 before its first). In the display currency. */
-export function netWorthSeries(s: AppState, maxMonths = 120): { months: string[]; bySource: { source: Source; values: number[] }[] } {
+const dayNum = (date: string) => { const [y, m, d] = date.split("-").map(Number); return Date.UTC(y, m - 1, d) / 86_400_000; };
+
+/** A source's value on a date: straight between its recorded balances, flat after the last, 0 before the first. */
+function valueOn(snaps: Snapshot[], date: string): number {
+  if (!snaps.length || date < snaps[0].date) return 0;
+  for (let i = snaps.length - 1; i >= 0; i--) {
+    if (snaps[i].date > date) continue;
+    const a = snaps[i], b = snaps[i + 1];
+    if (!b) return a.balance;
+    const f = (dayNum(date) - dayNum(a.date)) / Math.max(1, dayNum(b.date) - dayNum(a.date));
+    return a.balance + (b.balance - a.balance) * f;
+  }
+  return 0;
+}
+
+/** Months from the first balance to this month, with each source's value at each month's end (drawn straight
+    between recorded balances), in the display currency. `recorded[i]`: some source has a balance dated in month i. */
+export function netWorthSeries(s: AppState, maxMonths = 120): { months: string[]; recorded: boolean[]; bySource: { source: Source; values: number[] }[] } {
   const sources = liveSources(s);
   const dates = liveSnapshots(s).map((x) => x.date).sort();
-  if (!dates.length) return { months: [], bySource: [] };
+  if (!dates.length) return { months: [], recorded: [], bySource: [] };
   const end = thisMonth();
   let start = monthOf(dates[0]);
   if (monthDiff(start, end) > maxMonths) start = addMonths(end, -maxMonths);
   const n = monthDiff(start, end) + 1;
   const months = Array.from({ length: n }, (_, i) => addMonths(start, i));
+  const recorded = months.map((ym) => dates.some((d) => d.startsWith(ym)));
   const bySource = sources.map((source) => {
     const snaps = snapshotsOf(s, source.id);
-    let j = -1;
-    const values = months.map((ym) => {
-      const last = ym === end ? todayStr() : monthEnd(ym);
-      while (j + 1 < snaps.length && snaps[j + 1].date <= last) j++;
-      return j >= 0 ? toDisplay(s, snaps[j].balance, source.currency) : 0;
-    });
+    const values = months.map((ym) => toDisplay(s, valueOn(snaps, ym === end ? todayStr() : monthEnd(ym)), source.currency));
     return { source, values };
   }).filter((x) => x.values.some((v) => v > 0));
-  return { months, bySource };
+  return { months, recorded, bySource };
 }
 
 export interface MonthSum { income: number; expense: number; invest: number; net: number; rate: number | null }

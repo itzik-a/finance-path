@@ -624,3 +624,7 @@ input[type="date"].text-input, input[type="month"].text-input { -webkit-appearan
 .emoji-input { width: 52px; flex: none; text-align: center; font-size: 1.15rem; padding: 8px 4px; }
 .cat-row .btn { flex: none; }
 .dlg .chips .chip { white-space: nowrap; }
+
+/* overview */
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.card-head .link { font-size: .88rem; }
