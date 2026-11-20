@@ -14,10 +14,10 @@ function nf(key: string, opts: Intl.NumberFormatOptions) {
 export function fmt(amount: number, currency: Currency, o: { compact?: boolean; sign?: boolean; cents?: boolean } = {}): string {
   const abs = Math.abs(amount);
   const cents = o.cents ?? (abs < 100 && abs % 1 !== 0);
-  const key = `${currency}${o.compact ? "c" : ""}${cents ? "d" : ""}`;
-  const f = o.compact && abs >= 10_000
-    ? nf(key, { style: "currency", currency, notation: "compact", maximumFractionDigits: abs >= 1e6 ? 2 : 1 })
-    : nf(key, { style: "currency", currency, minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
+  const compact = o.compact && abs >= 10_000;
+  const f = compact
+    ? nf(`${currency}c${abs >= 1e6 ? 2 : 1}`, { style: "currency", currency, notation: "compact", maximumFractionDigits: abs >= 1e6 ? 2 : 1 })
+    : nf(`${currency}${cents ? "d" : ""}`, { style: "currency", currency, minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
   const s = f.format(abs);
   return amount < 0 ? `−${s}` : o.sign && amount > 0 ? `+${s}` : s;
 }

@@ -108,7 +108,7 @@ function SourcePage({ s, source }: { s: AppState; source: Source }) {
           <div><dt>Expected return</dt><dd>{pct(source.returnPct, 2)} a year</dd></div>
           <div><dt>Fees</dt><dd>{pct(source.feeBalancePct, 2)} of balance{source.feeDepositPct ? ` · ${pct(source.feeDepositPct, 2)} of deposits` : ""}</dd></div>
           <div><dt>Monthly</dt><dd>{source.monthly > 0 ? fmt(source.monthly, C) : "Nothing"}{source.monthly > 0 && source.raisePct ? `, +${pct(source.raisePct)} a year` : ""}</dd></div>
-          {source.monthly > 0 && <div><dt>Until</dt><dd>{source.contribUntil ? monthLabel(source.contribUntil) : "The end of the period"}</dd></div>}
+          {source.monthly > 0 && <div><dt>Until</dt><dd>{source.contribUntil ? monthLabel(source.contribUntil) : "No end date"}</dd></div>}
         </dl>
         {source.note && <p className="small note">{source.note}</p>}
       </header>

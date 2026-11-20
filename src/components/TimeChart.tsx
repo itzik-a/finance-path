@@ -153,7 +153,7 @@ export function TimeChart({ n, xLabel, xTick, xTicks, series, stacked, band, poi
   // End labels: only for plain lines, and only where they don't collide (else legend + tooltip carry it).
   const ends: { id: string; i: number; v: number; yy: number }[] = [];
   if (endLabels && !stacked && active == null) {
-    const cand = series.map((s) => { const i = lastIdx(s.values); return i >= 0 ? { id: s.id, i, v: s.values[i]!, yy: y(s.values[i]!) } : null; })
+    const cand = series.map((s) => { const i = lastIdx(s.values); return i === n - 1 ? { id: s.id, i, v: s.values[i]!, yy: y(s.values[i]!) } : null; })
       .filter((c): c is NonNullable<typeof c> => !!c).sort((a, b) => a.yy - b.yy);
     for (const c of cand) if (!ends.length || c.yy - ends[ends.length - 1].yy >= 16) ends.push(c);
   }
