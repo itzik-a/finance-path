@@ -556,3 +556,71 @@ input[type="date"].text-input, input[type="month"].text-input { -webkit-appearan
 .switch[aria-checked="true"] { background: var(--accent); }
 .switch[aria-checked="true"] span { transform: translateX(20px); }
 .num-static { min-width: 2.2em; text-align: center; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+
+/* search */
+.search {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 0 6px 0 12px; border-radius: var(--radius-sm);
+  background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--muted);
+}
+.search:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
+.search input {
+  flex: 1; min-width: 0; height: 44px; padding: 0; border: 0; background: transparent; outline: none;
+  font-size: 16px; color: var(--ink); -webkit-appearance: none; appearance: none;
+}
+.search input::placeholder { color: var(--muted); }
+.search input::-webkit-search-cancel-button { display: none; }
+.search-clear {
+  width: 32px; height: 32px; flex: none; position: relative; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 50%; background: var(--surface-2); color: var(--muted);
+}
+.search-clear::after { content: ""; position: absolute; inset: -6px; }
+
+/* cash flow */
+.month-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -6px -6px 0; }
+.month-nav h2 { font-size: 1.15rem; }
+.icon-btn:disabled { opacity: .3; cursor: default; }
+.sum-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 640px) { .sum-grid { grid-template-columns: repeat(4, 1fr); } }
+.sum-grid div { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); min-width: 0; }
+.sum-grid dt { display: flex; align-items: center; gap: 6px; font-size: .78rem; font-weight: 600; color: var(--muted); }
+.sum-grid dd { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.days { display: grid; gap: 12px; }
+.day { display: grid; gap: 6px; }
+.day-head { padding: 0 4px; font-size: .78rem; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.txn-list { display: grid; gap: 0; }
+.card.txn-list { padding: 2px 14px; }
+.txn-list > li { border-top: 1px solid var(--line); }
+.txn-list > li:first-child { border-top: 0; }
+.txn-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 0; border: 0; background: none; text-align: left; color: inherit; }
+.txn-emoji { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--surface-2); font-size: 1.1rem; }
+.txn-main { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.txn-main .muted { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.txn-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.txn-amt { flex: none; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.txn-amt.income { color: var(--pos); }
+.txn-amt.invest { color: var(--muted); }
+.cat-bars { display: grid; gap: 12px; }
+.cat-bars li { display: grid; gap: 6px; }
+.cat-bar-head { display: flex; justify-content: space-between; gap: 10px; font-size: .92rem; }
+.cat-bar-head > span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cat-bar-track { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.cat-bar { height: 100%; border-radius: 999px; }
+.flow-links { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+.flow-links .btn { justify-self: auto; }
+.bar-current { fill: var(--accent-soft); }
+.bar-hover { fill: var(--track); }
+.chart-tick.strong { fill: var(--ink); font-weight: 650; }
+.cat-chips { gap: 8px 6px; }
+.cat-chips .chip { padding: 6px 12px; }
+.rec-note { display: flex; gap: 6px; align-items: flex-start; }
+.rec-note svg { flex: none; margin-top: 3px; }
+.amount-row { grid-template-columns: 1fr auto; }
+.amount-row .seg button { min-width: 48px; }
+.cat-list { display: grid; gap: 8px; }
+.cat-row, .cat-add { display: flex; gap: 8px; align-items: center; }
+.cat-row .text-input:not(.emoji-input), .cat-add .text-input:not(.emoji-input) { flex: 1; min-width: 0; }
+.emoji-input { width: 52px; flex: none; text-align: center; font-size: 1.15rem; padding: 8px 4px; }
+.cat-row .btn { flex: none; }
+.dlg .chips .chip { white-space: nowrap; }

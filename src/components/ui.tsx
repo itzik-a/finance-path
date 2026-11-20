@@ -89,7 +89,7 @@ export function AmountInput({ value, onChange, currency, id, autoFocus, invalid,
     <div className={`amount-box${invalid ? " invalid" : ""}`}>
       {currency && <span className="amount-sym" aria-hidden="true">{SYMBOL[currency]}</span>}
       <input
-        id={id} className="text-input amount-input" inputMode="decimal" autoComplete="off" autoFocus={autoFocus}
+        id={id} className="text-input amount-input" inputMode="decimal" autoComplete="off" data-autofocus={autoFocus || undefined}
         placeholder={placeholder} value={text} aria-invalid={invalid || undefined}
         onChange={(e) => { setText(e.target.value); const n = parseAmount(e.target.value); last.current = n; onChange(n); }}
       />
@@ -124,7 +124,11 @@ export function Select<T extends string>({ value, onChange, options, id, label }
 export function Sheet({ title, onClose, children, actions, wide }: { title: string; onClose: () => void; children: ReactNode; actions?: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    ref.current?.showModal();
+    const d = ref.current;
+    d?.showModal();
+    // Focus the field marked data-autofocus, else nothing (rather than a ring on the Done button).
+    const af = d?.querySelector<HTMLElement>("[data-autofocus]");
+    if (af) af.focus(); else (document.activeElement as HTMLElement | null)?.blur();
     document.documentElement.classList.add("sheet-open");
     return () => document.documentElement.classList.remove("sheet-open");
   }, []);

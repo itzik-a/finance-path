@@ -41,7 +41,7 @@ export function SourceSheet({ source, onClose, onSaved }: { source?: Source; onC
     <Sheet title={source ? `Edit ${source.name}` : "New investment"} onClose={onClose}>
       <form ref={form} className="form-grid" onSubmit={submit} noValidate>
         <Field label="Name" id="src-name">
-          <input id="src-name" className="text-input" value={f.name} autoFocus={!source} placeholder="e.g. Pension fund (Migdal)"
+          <input id="src-name" className="text-input" value={f.name} data-autofocus={!source || undefined} placeholder="e.g. Pension fund (Migdal)"
             aria-invalid={tried && !nameOk || undefined} onChange={(e) => set("name", e.target.value)} />
         </Field>
         <div className="form-row">
