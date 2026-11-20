@@ -628,3 +628,12 @@ input[type="date"].text-input, input[type="month"].text-input { -webkit-appearan
 /* overview */
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .card-head .link { font-size: .88rem; }
+
+/* data & settings */
+.rate-row { display: flex; align-items: center; gap: 8px; }
+.rate-input { width: 110px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.sub-form { padding: 12px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.sub-form .text-input { background: var(--surface); }
+.sync-state svg { flex: none; color: var(--muted); }
+.sync-state .muted svg { vertical-align: -2px; }
+.text-btn:disabled { opacity: .5; }

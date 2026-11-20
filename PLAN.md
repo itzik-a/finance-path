@@ -51,6 +51,8 @@ Tabs: **Overview · Cash flow · Investments · Projection**
 5. **Overview**: net worth over time, this month, projection teaser.
 6. **Sync & settings**: encrypted gist sync, backup export / import, settings.
 
+Status 2026-11-20: 1–6 built, pushed and checked (phone and desktop widths, light and dark; projection math against hand calculations; two-device encrypted sync against a fake gist API: wrong passphrase, merge, passphrase change locking the other device).
+
 ## 5. Follow-ups
 
 - CSV import from bank and credit-card exports (with duplicate detection).
