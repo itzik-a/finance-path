@@ -1,12 +1,13 @@
-/* "Data & settings": encrypted sync, backup, currency and projection settings, examples. */
+/* "Data & settings": encrypted sync, encrypted backup, currency and projection settings, examples. */
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { exportBackup, importBackup, readBackup } from "../lib/backup";
+import { buildBackup, importBackup, keyForPassphrase, openLocked, readBackup, saveBackup, type BackupInfo } from "../lib/backup";
+import { WrongKey, type Envelope } from "../lib/crypto";
 import { ago } from "../lib/dates";
 import { refreshRate } from "../lib/fx";
 import { parseAmount } from "../lib/money";
 import { hasExamples, removeExamples, setRate, setSettings } from "../state/actions";
 import { getState, useAppState } from "../state/store";
-import { TOKEN_URL, changePassphrase, disconnect, hasGist, probe, syncNow, unlock, useSyncStatus, type SyncStatus } from "../state/sync";
+import { TOKEN_URL, changePassphrase, deviceKey, disconnect, hasGist, probe, syncNow, unlock, useSyncStatus, type SyncStatus } from "../state/sync";
 import type { Currency } from "../types";
 import { IconExternal, IconLock } from "./Icons";
 import { Seg, Sheet, Stepper, Switch } from "./ui";
@@ -233,34 +234,129 @@ function SettingsSection() {
 }
 
 function BackupSection() {
+  const s = useSyncStatus();
+  const synced = s.kind !== "off" && s.kind !== "locked"; // this device holds the sync key
   const [note, setNote] = useState("");
+  const [choosing, setChoosing] = useState(false); // export on a device without sync: choose a passphrase
+  const [ready, setReady] = useState<File | null>(null); // sealed with that passphrase, waiting for a tap to save
+  const [locked, setLocked] = useState<Envelope | null>(null); // import that needs its passphrase
   const file = useRef<HTMLInputElement>(null);
+
+  const saved = (r: "shared" | "downloaded" | "cancelled", how: string) =>
+    setNote(r === "cancelled" ? "" : `Encrypted backup ${r === "shared" ? "shared" : "downloaded"}. ${how}`);
+
+  async function onExport() {
+    setNote(""); setLocked(null);
+    try {
+      const k = await deviceKey();
+      if (!k) { setChoosing(true); setReady(null); return; }
+      saved(await saveBackup(await buildBackup(k)), "It opens with your sync passphrase (the one in use today).");
+    } catch (x) { setNote((x as Error).message); }
+  }
+
+  function merge(b: BackupInfo) {
+    const when = b.exportedAt ? new Date(b.exportedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "an unknown date";
+    const old = b.encrypted ? "" : "\n\nThis is an old unencrypted backup. Once it's merged, you can delete that file and export an encrypted one.";
+    if (!window.confirm(`Merge the backup from ${when} into this device?\n\n${b.sources} investments, ${b.txns} transactions.\nNothing here is removed; for anything in both, the newer edit is kept.${old}`)) return;
+    const before = getState().txns.filter((t) => !t.deletedAt).length;
+    importBackup(b);
+    const after = getState().txns.filter((t) => !t.deletedAt).length;
+    setNote(after > before ? `Backup merged: ${after - before} transactions added.` : "Backup merged.");
+  }
+
   async function onFile(f?: File) {
     if (!f) return;
+    setNote(""); setChoosing(false); setReady(null); setLocked(null);
     try {
-      const b = await readBackup(f);
-      const when = b.exportedAt ? new Date(b.exportedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "an unknown date";
-      if (!window.confirm(`Merge the backup from ${when} into this device?\n\n${b.sources} investments, ${b.txns} transactions.\nNothing here is removed; for anything in both, the newer edit is kept.`)) return;
-      const before = getState().txns.filter((t) => !t.deletedAt).length;
-      importBackup(b);
-      const after = getState().txns.filter((t) => !t.deletedAt).length;
-      setNote(after > before ? `Backup merged: ${after - before} transactions added.` : "Backup merged.");
+      const r = await readBackup(f, await deviceKey());
+      if ("locked" in r) setLocked(r.locked);
+      else merge(r);
     } catch (x) {
       setNote((x as Error).message);
     } finally {
       if (file.current) file.current.value = "";
     }
   }
+
   return (
     <section className="dlg-section" aria-labelledby="bk-title">
       <h3 id="bk-title">Backup</h3>
-      <p className="muted small">A JSON file with everything, to keep in Files or iCloud Drive. It isn't encrypted, so keep it somewhere private.</p>
+      <p className="muted small">
+        <IconLock /> An encrypted file with everything, to keep in Files or iCloud Drive.{" "}
+        {synced ? "It opens with your sync passphrase." : "You choose a passphrase for it when you export."}
+        {" "}Lose the passphrase and the file can't be opened.
+      </p>
       <div className="dlg-actions row">
-        <button type="button" className="btn" onClick={() => void exportBackup().then((r) => setNote(r === "downloaded" ? "Backup downloaded." : r === "shared" ? "Backup shared." : ""))}>Export backup</button>
+        <button type="button" className="btn" onClick={() => void onExport()}>Export backup</button>
         <button type="button" className="btn ghost" onClick={() => file.current?.click()}>Import backup</button>
         <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => void onFile(e.target.files?.[0])} />
       </div>
+      {choosing && !ready && <BackupPassphrase onSealed={(f) => setReady(f)} onCancel={() => setChoosing(false)} />}
+      {ready && (
+        <div className="form-grid sub-form">
+          <p className="small"><IconLock /> Encrypted. Save the file somewhere private; it opens with the passphrase you just chose.</p>
+          <button type="button" className="btn primary" onClick={() => void saveBackup(ready).then((r) => {
+            if (r !== "cancelled") { setReady(null); setChoosing(false); }
+            saved(r, "It opens with the passphrase you chose for it.");
+          })}>Save backup file</button>
+        </div>
+      )}
+      {locked && <OpenBackup env={locked} onOpened={(b) => { setLocked(null); merge(b); }} onCancel={() => setLocked(null)} />}
       {note && <p className="small" role="status">{note}</p>}
     </section>
+  );
+}
+
+/** Choose a passphrase for a backup made on a device that doesn't sync. */
+function BackupPassphrase({ onSealed, onCancel }: { onSealed: (f: File) => void; onCancel: () => void }) {
+  const [pass, setPass] = useState("");
+  const [again, setAgain] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ok = pass.length >= 10 && pass === again;
+  const mismatch = again.length > 0 && again !== pass;
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!ok) return;
+    setBusy(true); setErr("");
+    try { onSealed(await buildBackup(await keyForPassphrase(pass))); }
+    catch (x) { setErr((x as Error).message); }
+    finally { setBusy(false); }
+  }
+  return (
+    <form className="form-grid sub-form" onSubmit={submit}>
+      <b className="small">Choose a passphrase for this backup</b>
+      <input type="password" className="text-input" autoComplete="new-password" placeholder="Passphrase (10+ characters)" aria-label="Backup passphrase" value={pass} onChange={(e) => setPass(e.target.value)} data-autofocus />
+      <input type="password" className="text-input" autoComplete="new-password" placeholder="Same passphrase again" aria-label="Backup passphrase again" value={again} onChange={(e) => setAgain(e.target.value)} aria-invalid={mismatch || undefined} />
+      <p className={`small ${mismatch ? "form-error" : "muted"}`}>{mismatch ? "The two don't match." : "Write it down: without it the backup can't be opened."}</p>
+      {err && <p className="form-error" role="alert">{err}</p>}
+      <button type="submit" className="btn primary" disabled={!ok || busy}>{busy ? "Encrypting…" : "Encrypt backup"}</button>
+      <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
+    </form>
+  );
+}
+
+/** The passphrase for a backup this device's key doesn't open (made elsewhere, or before a passphrase change). */
+function OpenBackup({ env, onOpened, onCancel }: { env: Envelope; onOpened: (b: BackupInfo) => void; onCancel: () => void }) {
+  const [pass, setPass] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!pass) return;
+    setBusy(true); setErr("");
+    try { onOpened(await openLocked(env, pass)); }
+    catch (x) { setErr(x instanceof WrongKey ? "That passphrase doesn't open this backup. Check it and try again." : (x as Error).message); }
+    finally { setBusy(false); }
+  }
+  return (
+    <form className="form-grid sub-form" onSubmit={submit}>
+      <b className="small"><IconLock /> This backup is encrypted</b>
+      <span className="muted small">Enter the passphrase it was made with: the sync passphrase at the time, or the one chosen for the backup.</span>
+      <input type="password" className="text-input" autoComplete="current-password" placeholder="Passphrase" aria-label="Backup passphrase" value={pass} onChange={(e) => setPass(e.target.value)} />
+      {err && <p className="form-error" role="alert">{err}</p>}
+      <button type="submit" className="btn primary" disabled={!pass || busy}>{busy ? "Opening…" : "Open backup"}</button>
+      <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
+    </form>
   );
 }

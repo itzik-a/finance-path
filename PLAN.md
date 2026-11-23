@@ -40,7 +40,7 @@ Tabs: **Overview · Cash flow · Investments · Projection**
 - **Cash flow**: month switcher, the month's summary, transactions by day (search across all months), spending by category, 12-month income vs expenses chart, recurring items, categories.
 - **Investments**: the sources with balance, as-of date, return and contribution; total. A source's page: balance history chart, add a balance, its settings, its own projection.
 - **Projection**: source chips, period, with / without / both, nominal / today's money, range, total / by source, breakdown tiles, year-by-year table.
-- **Data & settings** (pill in the top bar / sidebar): encrypted sync, JSON backup, display currency, $→₪ rate (auto from the ECB's daily rate, or set by hand), inflation, scenario spread, remove the examples.
+- **Data & settings** (pill in the top bar / sidebar): encrypted sync, encrypted backup, display currency, $→₪ rate (auto from the ECB's daily rate, or set by hand), inflation, scenario spread, remove the examples.
 
 ## 4. Milestones
 
@@ -67,6 +67,7 @@ Status 2026-11-20: 1–6 built, pushed and checked (phone and desktop widths, li
 - **Name**: finance-path.
 - **Currencies**: ₪ and $. Each source and transaction has its own; totals are shown in the display currency (₪ by default) at the $→₪ rate, which comes from the ECB daily reference rate (frankfurter.dev, no key) unless set by hand.
 - **Expenses**: typed in the app (no bank import yet).
-- **Sync**: encrypted. A secret gist isn't private (anyone with its URL can read it), so the file in the gist is AES-GCM ciphertext; the key comes from a passphrase (PBKDF2-SHA256, 600,000 rounds) entered once per device. The passphrase is never stored or sent; this device keeps the derived key. Lose the passphrase and the gist can't be read (each device's own copy and backups are unaffected).
+- **Sync**: encrypted. A secret gist isn't private (anyone with its URL can read it), so the file in the gist is AES-GCM ciphertext; the key comes from a passphrase (PBKDF2-SHA256, 600,000 rounds) entered once per device. The passphrase is never stored or sent; this device keeps the derived key. Lose the passphrase and the gist can't be read (each device's own copy is unaffected).
+- **Backup**: encrypted too (2026-11-23; until then it was plain JSON). Same envelope as the gist: sealed with the sync key on a synced device (opens with the sync passphrase of that day), or with a passphrase chosen for the backup on a device that doesn't sync. There's no plain export any more; old plain backups still import. The copy in the browser's own storage stays unencrypted, as the device keeps the key beside it anyway.
 - **Examples**: a few made-up sources, balances, transactions and recurring items, tagged "Example", removable in one go. Editing one makes it mine.
 - **Charts**: hand-made SVG (no chart library), colours from the validated categorical palette, one per source in a fixed slot.

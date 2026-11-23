@@ -369,5 +369,11 @@ export function disconnect() {
   setStatus({ kind: "off", text: "On this device", last: undefined, detail: undefined, retryAt: undefined, quota: undefined });
 }
 
+/** This device's sync key, salt and rounds (for sealing backups), or null when it isn't unlocked. */
+export async function deviceKey(): Promise<{ key: CryptoKey; salt: string; iter: number } | null> {
+  if (!cfg?.key || !cfg.salt) return null;
+  return { key: await getKey(), salt: cfg.salt, iter: cfg.iter ?? ITERATIONS };
+}
+
 export const hasToken = () => !!cfg;
 export const hasGist = () => !!cfg?.gistId;
