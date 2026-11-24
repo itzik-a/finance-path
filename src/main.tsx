@@ -4,6 +4,7 @@ import { App } from "./App";
 import { refreshRate } from "./lib/fx";
 import { applyRecurring } from "./state/actions";
 import { startSync } from "./state/sync";
+import "./lib/theme";
 import "./styles.css";
 
 applyRecurring();

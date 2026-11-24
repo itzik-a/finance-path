@@ -10,6 +10,7 @@ import { getState, useAppState } from "../state/store";
 import { TOKEN_URL, changePassphrase, deviceKey, disconnect, hasGist, probe, syncNow, unlock, useSyncStatus, type SyncStatus } from "../state/sync";
 import type { Currency } from "../types";
 import { IconExternal, IconLock } from "./Icons";
+import { ThemePicker } from "./ThemePicker";
 import { Seg, Sheet, Stepper, Switch } from "./ui";
 
 const dotClass = (s: SyncStatus) => (s.kind === "ok" ? "ok" : s.kind === "busy" ? "busy" : s.kind === "pending" ? "pending" : s.kind === "error" || s.kind === "locked" ? "err" : "");
@@ -31,6 +32,7 @@ export function DataSheet({ onClose }: { onClose: () => void }) {
     <Sheet title="Data & settings" onClose={onClose}>
       <SyncSection />
       <SettingsSection />
+      <ThemeSection />
       <BackupSection />
     </Sheet>
   );
@@ -229,6 +231,16 @@ function SettingsSection() {
       </div>
       <p className="muted small">Inflation turns future amounts into today's money in the projection. The range shows the projection with the expected returns lower and higher by this much.</p>
       {hasExamples(s) && <button type="button" className="btn ghost" onClick={removeExamples}>Remove the examples</button>}
+    </section>
+  );
+}
+
+function ThemeSection() {
+  return (
+    <section className="dlg-section" aria-labelledby="theme-title">
+      <h3 id="theme-title">Appearance</h3>
+      <ThemePicker />
+      <p className="muted small">System follows this device's light or dark setting. Each device keeps its own choice.</p>
     </section>
   );
 }
