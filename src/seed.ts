@@ -29,6 +29,7 @@ export const SEED_CATEGORIES: Category[] = [
   cat("c-bills", "expense", "💡", "Bills & utilities"),
   cat("c-health", "expense", "🩺", "Health"),
   cat("c-insurance", "expense", "🛡️", "Insurance"),
+  cat("c-loan", "expense", "💳", "Loan payments"),
   cat("c-shopping", "expense", "🛍️", "Shopping"),
   cat("c-fun", "expense", "🎬", "Entertainment"),
   cat("c-subs", "expense", "🔁", "Subscriptions"),

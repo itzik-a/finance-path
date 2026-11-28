@@ -1,7 +1,7 @@
 /* App state, saved to localStorage on every change. Every change goes through src/state/actions.ts.
    New fields must be optional in normalize() so older saved copies still load. */
 import { useSyncExternalStore } from "react";
-import { DEFAULT_SETTINGS, seedState } from "../seed";
+import { DEFAULT_SETTINGS, SEED_CATEGORIES, seedState } from "../seed";
 import type { AppState } from "../types";
 
 export type { AppState };
@@ -13,6 +13,21 @@ export const defaults = (): AppState => seedState();
 const arr = <T,>(v: unknown, d: T[]): T[] => (Array.isArray(v) ? (v as T[]) : d);
 const obj = <T extends object>(v: unknown): Partial<T> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Partial<T>) : {});
 
+/** Starter categories added after a copy was saved (e.g. Loan payments) join it, at their place in the seed list.
+    They carry `updatedAt: 0`, so every device adds the same item and any edit or delete wins over it. */
+function withSeedCategories(cats: AppState["categories"]): AppState["categories"] {
+  const have = new Set(cats.map((c) => c.id));
+  const out = [...cats];
+  SEED_CATEGORIES.forEach((c, i) => {
+    if (have.has(c.id)) return;
+    const prev = SEED_CATEGORIES.slice(0, i).reverse().find((p) => have.has(p.id));
+    const at = prev ? out.findIndex((x) => x.id === prev.id) + 1 : 0;
+    out.splice(at, 0, c);
+    have.add(c.id);
+  });
+  return out;
+}
+
 export function normalize(s: unknown): AppState {
   const d = defaults();
   if (!s || typeof s !== "object") return d;
@@ -22,7 +37,7 @@ export function normalize(s: unknown): AppState {
     sources: arr(x.sources, d.sources).map((src) => ({ ...src, raisePct: src.raisePct ?? 0, feeDepositPct: src.feeDepositPct ?? 0, feeBalancePct: src.feeBalancePct ?? 0, color: src.color ?? 0 })),
     snapshots: arr(x.snapshots, d.snapshots),
     txns: arr(x.txns, d.txns),
-    categories: arr(x.categories, d.categories),
+    categories: withSeedCategories(arr(x.categories, d.categories)),
     recurring: arr(x.recurring, d.recurring),
     settings: { ...DEFAULT_SETTINGS, ...obj<AppState["settings"]>(x.settings) },
     updatedAt: x.updatedAt || 0,
