@@ -1,11 +1,13 @@
-/* Add or edit a transaction, or a recurring item (same fields plus when it repeats). */
+/* Add or edit a transaction, or a recurring item (same fields plus when it repeats). An expense can be split into
+   monthly payments: a purchase whose payments are edited and removed together (savePlan() in actions.ts). */
 import { useRef, useState, type FormEvent } from "react";
-import { MONTHS, todayStr } from "../lib/dates";
-import { addRecurring, addTxn, deleteRecurring, deleteTxn, editRecurring, editTxn, liveCategories, liveSources } from "../state/actions";
+import { MONTHS, monthLabel, monthOf, todayStr } from "../lib/dates";
+import { fmt } from "../lib/money";
+import { addRecurring, addTxn, deletePlan, deleteRecurring, deleteTxn, editRecurring, editTxn, liveCategories, liveSources, planDate, planFirstDate, savePlan, splitAmount } from "../state/actions";
 import { useAppState } from "../state/store";
 import type { Currency, Recurring, Txn, TxnKind } from "../types";
 import { IconRepeat } from "./Icons";
-import { AmountInput, Field, Seg, Select, Sheet, Switch, closeSheet } from "./ui";
+import { AmountInput, Field, Seg, Select, Sheet, Stepper, Switch, closeSheet } from "./ui";
 
 export const KIND_LABEL: Record<TxnKind, string> = { expense: "Expense", income: "Income", invest: "Invested" };
 
@@ -20,6 +22,8 @@ interface Draft {
   repeat: boolean;
   every: "month" | "year";
   end: string;
+  /** monthly payments (expenses only); 1 = paid at once */
+  parts: number;
 }
 
 export function TxnSheet({ txn, recurring, newRecurring, defaultKind = "expense", onClose }: {
@@ -34,10 +38,10 @@ export function TxnSheet({ txn, recurring, newRecurring, defaultKind = "expense"
     const src = txn ?? recurring;
     const kind = src?.kind ?? defaultKind;
     return {
-      kind, amount: src?.amount ?? NaN, currency: src?.currency ?? s.settings.display, categoryId: src?.categoryId ?? firstCat(kind),
+      kind, amount: txn?.plan?.total ?? src?.amount ?? NaN, currency: src?.currency ?? s.settings.display, categoryId: src?.categoryId ?? firstCat(kind),
       sourceId: src?.sourceId, note: src?.note ?? "",
-      date: txn?.date ?? recurring?.start ?? todayStr(),
-      repeat: isRec, every: recurring?.every ?? "month", end: recurring?.end ?? "",
+      date: txn ? planFirstDate(s, txn) : recurring?.start ?? todayStr(),
+      repeat: isRec, every: recurring?.every ?? "month", end: recurring?.end ?? "", parts: txn?.plan?.parts ?? 1,
     };
   });
   const [tried, setTried] = useState(false);
@@ -48,6 +52,10 @@ export function TxnSheet({ txn, recurring, newRecurring, defaultKind = "expense"
   // A deleted category still shows on the items that use it.
   const current = s.categories.find((c) => c.id === d.categoryId);
   if (current?.deletedAt && current.kind === d.kind) catsOfKind.push(current);
+  // Payments: for an expense that doesn't repeat (a payment made by a recurring item stays one transaction).
+  const payable = d.kind === "expense" && !d.repeat && !isRec && !txn?.recurringId;
+  const parts = payable ? d.parts : 1;
+  const plan = txn?.plan;
   const fromRecurring = txn?.recurringId ? s.recurring.find((r) => r.id === txn.recurringId && !r.deletedAt) : undefined;
 
   function setKind(k: TxnKind) {
@@ -62,13 +70,15 @@ export function TxnSheet({ txn, recurring, newRecurring, defaultKind = "expense"
     const day = Number(d.date.slice(8, 10));
     const when = { every: d.every, day: Math.min(28, day), month: d.every === "year" ? Number(d.date.slice(5, 7)) : undefined, start: d.date, end: d.end || undefined };
     if (recurring) editRecurring(recurring.id, (r) => { Object.assign(r, base, when); if (!base.sourceId) delete r.sourceId; if (!when.end) delete r.end; if (!base.note) delete r.note; });
+    else if (plan) savePlan({ ...base, total: d.amount, parts, first: d.date }, plan.id);
+    else if (parts > 1) savePlan({ ...base, total: d.amount, parts, first: d.date }, undefined, txn?.id);
     else if (txn) editTxn(txn.id, (t) => { Object.assign(t, base, { date: d.date }); if (!base.sourceId) delete t.sourceId; if (!base.note) delete t.note; });
     else if (d.repeat) addRecurring({ ...base, ...when });
     else addTxn({ ...base, date: d.date });
     closeSheet(form.current);
   }
 
-  const title = recurring ? "Edit recurring" : newRecurring ? "New recurring" : txn ? `Edit ${KIND_LABEL[d.kind].toLowerCase()}` : "Add";
+  const title = recurring ? "Edit recurring" : newRecurring ? "New recurring" : plan ? "Edit purchase" : txn ? `Edit ${KIND_LABEL[d.kind].toLowerCase()}` : "Add";
   const dayNote = Number(d.date.slice(8, 10)) > 28 ? " (on the 28th, so every month has it)" : "";
 
   return (
@@ -77,7 +87,7 @@ export function TxnSheet({ txn, recurring, newRecurring, defaultKind = "expense"
         <Seg<TxnKind> className="full" label="Kind" value={d.kind} onChange={setKind}
           options={[{ id: "expense", label: "Expense" }, { id: "income", label: "Income" }, { id: "invest", label: "Invested" }]} />
         <div className="form-row amount-row">
-          <Field label="Amount" id="tx-amount">
+          <Field label={parts > 1 ? "Total price" : "Amount"} id="tx-amount">
             <AmountInput id="tx-amount" currency={d.currency} value={d.amount} onChange={(v) => set("amount", v)} autoFocus={!txn && !recurring} invalid={tried && !amountOk} />
           </Field>
           <div className="field">
@@ -85,6 +95,13 @@ export function TxnSheet({ txn, recurring, newRecurring, defaultKind = "expense"
             <Seg<Currency> className="full" label="Currency" value={d.currency} onChange={(c) => set("currency", c)} options={[{ id: "ILS", label: "₪" }, { id: "USD", label: "$" }]} />
           </div>
         </div>
+
+        {payable && (
+          <div className="payments">
+            <Stepper label="Payments" value={d.parts} min={1} max={36} step={1} onChange={(v) => set("parts", v)} format={(v) => (v === 1 ? "1 (at once)" : String(v))} />
+            {parts > 1 && <p className="muted small">{planSummary(d.amount, parts, d.currency, d.date)}</p>}
+          </div>
+        )}
 
         <div className="field">
           <span className="field-label">Category</span>
@@ -108,11 +125,11 @@ export function TxnSheet({ txn, recurring, newRecurring, defaultKind = "expense"
           <input id="tx-note" className="text-input" value={d.note} placeholder={d.kind === "income" ? "e.g. Salary" : "e.g. Supermarket"} onChange={(e) => set("note", e.target.value)} dir="auto" />
         </Field>
 
-        <Field label={d.repeat ? "Starting" : "Date"} id="tx-date">
+        <Field label={d.repeat ? "Starting" : parts > 1 ? "First payment" : "Date"} id="tx-date">
           <input id="tx-date" type="date" className="text-input" value={d.date} onChange={(e) => set("date", e.target.value)} />
         </Field>
 
-        {!txn && !isRec && (
+        {!txn && !isRec && parts === 1 && (
           <label className="switch-row">
             <Switch on={d.repeat} onChange={(on) => set("repeat", on)} label="Repeats" />
             <span>Repeats</span>
@@ -135,17 +152,31 @@ export function TxnSheet({ txn, recurring, newRecurring, defaultKind = "expense"
         )}
 
         {tried && !amountOk && <p className="form-error" role="alert">Enter an amount above zero.</p>}
-        <button type="submit" className="btn primary">{txn || recurring ? "Save" : d.repeat ? "Add recurring" : `Add ${KIND_LABEL[d.kind].toLowerCase()}`}</button>
+        <button type="submit" className="btn primary">{txn || recurring ? "Save" : d.repeat ? "Add recurring" : parts > 1 ? `Add ${parts} payments` : `Add ${KIND_LABEL[d.kind].toLowerCase()}`}</button>
+        {plan && (
+          <p className="muted small">Payment {plan.part} of {plan.parts} of a {fmt(plan.total, txn!.currency, { cents: plan.total % 1 !== 0 })} purchase. Changes apply to every payment.</p>
+        )}
         {fromRecurring && (
           <p className="muted small rec-note"><IconRepeat /> Added by a recurring item. Changes here apply to this one only; change the recurring item in Cash flow → Recurring.</p>
         )}
         {recurring && <p className="muted small">Changes apply from the next one on; ones already added stay as they are.</p>}
         {(txn || recurring) && (
-          <button type="button" className="btn ghost danger" onClick={() => { if (txn) deleteTxn(txn.id); else deleteRecurring(recurring!.id); closeSheet(form.current); }}>
-            {txn ? "Remove" : "Stop and remove (keeps ones already added)"}
+          <button type="button" className="btn ghost danger" onClick={() => { if (plan) deletePlan(plan.id); else if (txn) deleteTxn(txn.id); else deleteRecurring(recurring!.id); closeSheet(form.current); }}>
+            {plan ? `Remove the purchase (all ${plan.parts} payments)` : txn ? "Remove" : "Stop and remove (keeps ones already added)"}
           </button>
         )}
       </form>
     </Sheet>
   );
+}
+
+/** "6 monthly payments of ₪500, Nov 2026 to Apr 2027." (a first payment that takes the odd agorot is named) */
+function planSummary(total: number, parts: number, currency: Currency, first: string): string {
+  const when = first ? `, ${monthLabel(monthOf(first), true)} to ${monthLabel(monthOf(planDate(first, parts - 1)), true)}` : "";
+  if (!(total > 0)) return `${parts} monthly payments${when}.`;
+  const [a, b] = splitAmount(total, parts);
+  const money = (v: number) => fmt(v, currency, { cents: v % 1 !== 0 });
+  return a === b
+    ? `${parts} monthly payments of ${money(b)}${when}.`
+    : `${parts} monthly payments: ${money(a)}, then ${parts - 1} of ${money(b)}${when}.`;
 }

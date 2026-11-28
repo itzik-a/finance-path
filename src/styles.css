@@ -643,6 +643,7 @@ input[type="date"].text-input, input[type="month"].text-input { -webkit-appearan
 .cat-chips { gap: 8px 6px; }
 .cat-chips .chip { padding: 6px 12px; }
 .rec-note { display: flex; gap: 6px; align-items: flex-start; }
+.payments { display: grid; gap: 6px; }
 .rec-note svg { flex: none; margin-top: 3px; }
 .amount-row { grid-template-columns: 1fr auto; }
 .amount-row .seg button { min-width: 48px; }

@@ -61,6 +61,8 @@ export interface Txn {
   note?: string;
   /** made by this recurring item (id = `r_<recurring id>_<YYYY-MM or YYYY>`) */
   recurringId?: string;
+  /** one monthly payment of a purchase split into payments (id = `p_<plan id>_<part>`); `total` is the full price */
+  plan?: { id: string; part: number; parts: number; total: number };
   example?: boolean;
   updatedAt: number;
   deletedAt?: number;

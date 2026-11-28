@@ -1,6 +1,6 @@
 /* Every change to the app state goes through here. Each edit stamps the item's `updatedAt`, which sync merges by.
    Deletes are soft (`deletedAt`) with an Undo toast. Editing an example makes it yours (drops `example`). */
-import { addMonths, monthDiff, monthOf, todayStr } from "../lib/dates";
+import { addMonths, monthDiff, monthEnd, monthOf, todayStr } from "../lib/dates";
 import { showToast } from "../lib/toast";
 import { uid } from "../lib/uid";
 import type { AppState, Category, Recurring, Settings, Snapshot, Source, Txn } from "../types";
@@ -80,7 +80,7 @@ export const deleteSnapshot = (id: string) => softDelete("snapshots", id, "the b
 
 // ── transactions ──────────────────────────────────────────────
 
-export type TxnInput = Omit<Txn, "id" | "updatedAt" | "example" | "deletedAt" | "recurringId">;
+export type TxnInput = Omit<Txn, "id" | "updatedAt" | "example" | "deletedAt" | "recurringId" | "plan">;
 
 export function addTxn(t: TxnInput) {
   const id = uid();
@@ -90,6 +90,69 @@ export function addTxn(t: TxnInput) {
 
 export const editTxn = (id: string, fn: (t: Txn) => void) => edit("txns", id, fn);
 export const deleteTxn = (id: string) => softDelete("txns", id, "the transaction");
+
+// ── purchases in payments ─────────────────────────────────────
+
+/** A total split into `parts` amounts, to the agora / cent; what doesn't divide evenly goes on the first. */
+export function splitAmount(total: number, parts: number): number[] {
+  const cents = Math.round(total * 100);
+  const each = Math.floor(cents / parts);
+  return Array.from({ length: parts }, (_, i) => (i === 0 ? cents - each * (parts - 1) : each) / 100);
+}
+
+/** The date of payment i (0 = the first): the first one's day of the month, or that month's last day. */
+export function planDate(first: string, i: number): string {
+  const ym = addMonths(monthOf(first), i);
+  const date = `${ym}-${first.slice(8, 10)}`;
+  const end = monthEnd(ym);
+  return date > end ? end : date;
+}
+
+/** The first payment's date of a purchase (from its first payment, or worked back from this one). */
+export function planFirstDate(s: AppState, t: Txn): string {
+  if (!t.plan) return t.date;
+  const first = s.txns.find((x) => x.id === `p_${t.plan!.id}_1`);
+  return first?.date ?? planDate(t.date, 1 - t.plan.part);
+}
+
+export type PlanInput = Omit<TxnInput, "amount" | "date" | "plan"> & { total: number; parts: number; first: string };
+
+/** Save a purchase paid in monthly payments: one transaction per payment, id `p_<plan id>_<n>`, so two devices
+    write the same ones. Saving again rewrites every payment and removes those past a smaller count (one payment
+    leaves a plain transaction). `replace`: a plain transaction being turned into payments, removed. */
+export function savePlan(p: PlanInput, planId = uid(), replace?: string) {
+  const { total, parts, first, ...base } = p;
+  const amounts = splitAmount(total, parts);
+  update((d) => {
+    const now = Date.now();
+    for (let i = 0; i < parts; i++) {
+      const id = `p_${planId}_${i + 1}`;
+      const t: Txn = { ...base, note: base.note?.trim() || undefined, id, date: planDate(first, i), amount: amounts[i], updatedAt: now };
+      if (parts > 1) t.plan = { id: planId, part: i + 1, parts, total };
+      const at = d.txns.findIndex((x) => x.id === id);
+      if (at >= 0) d.txns[at] = t; else d.txns.push(t);
+    }
+    for (const x of d.txns) {
+      if ((x.plan?.id === planId && x.plan.part > parts && !x.deletedAt) || (replace && x.id === replace)) { x.deletedAt = now; x.updatedAt = now; }
+    }
+  });
+}
+
+/** Remove every payment of a purchase, with one Undo. */
+export function deletePlan(planId: string) {
+  const ids = getState().txns.filter((t) => t.plan?.id === planId && !t.deletedAt).map((t) => t.id);
+  update((d) => {
+    const now = Date.now();
+    for (const x of d.txns) if (ids.includes(x.id)) { x.deletedAt = now; x.updatedAt = now; }
+  });
+  showToast(`Removed the purchase (${ids.length} payments)`, {
+    label: "Undo",
+    run: () => update((d) => {
+      const now = Date.now();
+      for (const x of d.txns) if (ids.includes(x.id)) { delete x.deletedAt; x.updatedAt = now; }
+    }),
+  });
+}
 
 // ── categories ────────────────────────────────────────────────
 

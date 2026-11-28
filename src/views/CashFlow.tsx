@@ -25,7 +25,9 @@ export function CashFlow() {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<Txn | "new" | null>(null);
   const [sheet, setSheet] = useState<"recurring" | "categories" | null>(null);
-  const ym = month > now ? now : month;
+  // Forward as far as the last payment already scheduled (a purchase in payments), else up to this month.
+  const lastMonth = liveTxns(s).reduce((m, t) => (t.date.slice(0, 7) > m ? t.date.slice(0, 7) : m), now);
+  const ym = month > lastMonth ? lastMonth : month;
   const D = s.settings.display;
   const sum = monthSum(s, ym);
   const query = q.trim().toLowerCase();
@@ -50,7 +52,7 @@ export function CashFlow() {
             <div className="month-nav">
               <button type="button" className="icon-btn subtle" aria-label="Previous month" onClick={() => setMonth(addMonths(ym, -1))}><IconBack /></button>
               <h2 id="month-title">{monthLabel(ym)}</h2>
-              <button type="button" className="icon-btn subtle" aria-label="Next month" disabled={ym >= now} onClick={() => setMonth(addMonths(ym, 1))}><IconNext /></button>
+              <button type="button" className="icon-btn subtle" aria-label="Next month" disabled={ym >= lastMonth} onClick={() => setMonth(addMonths(ym, 1))}><IconNext /></button>
             </div>
             <dl className="sum-grid">
               <div><dt><i className="key-rect" style={{ background: FLOW_COLOR.income }} />Income</dt><dd>{fmt(sum.income, D)}</dd></div>
@@ -91,7 +93,8 @@ function Trend({ s, ym, onPick }: { s: AppState; ym: string; onPick: (ym: string
   const D = s.settings.display;
   const now = thisMonth();
   // 12 months ending at the picked month (or later, up to this month, so the picked one isn't always last).
-  const last = addMonths(ym, 3) > now ? now : addMonths(ym, 3);
+  const cap = ym > now ? ym : now;
+  const last = addMonths(ym, 3) > cap ? cap : addMonths(ym, 3);
   const months = Array.from({ length: 12 }, (_, i) => addMonths(last, i - 11));
   const sums = months.map((m) => monthSum(s, m));
   if (!sums.some((x) => x.income || x.expense || x.invest)) return null;
@@ -123,7 +126,7 @@ function TxnRow({ s, t, onOpen, showDate }: { s: AppState; t: Txn; onOpen: (t: T
           <span className="txn-title" dir="auto">{t.note || c?.name || KIND_LABEL[t.kind]}</span>
           <span className="muted small">
             {t.recurringId && <IconRepeat aria-label="Recurring" />}
-            {showDate ? `${dayLabel(t.date)} · ` : ""}{c?.name ?? "No category"}{into ? ` → ${into.name}` : ""}
+            {showDate ? `${dayLabel(t.date)} · ` : ""}{t.plan ? `Payment ${t.plan.part}/${t.plan.parts} · ` : ""}{c?.name ?? "No category"}{into ? ` → ${into.name}` : ""}
           </span>
         </span>
         <span className={`txn-amt ${t.kind}`}>{t.kind === "income" ? "+" : t.kind === "expense" ? "−" : ""}{fmt(t.amount, t.currency, { cents: t.amount % 1 !== 0 })}</span>
