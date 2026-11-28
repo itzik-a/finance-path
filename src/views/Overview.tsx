@@ -1,10 +1,12 @@
-/* Overview (#overview): net worth now and over time, this month's money, and where it's heading. */
-import { useMemo } from "react";
+/* Overview (#overview): net worth now and over time, this month's money, purchases still being paid off, and where it's heading. */
+import { useMemo, useState } from "react";
 import { ExamplesNote } from "../components/ExamplesNote";
 import { IconNext, IconPlus } from "../components/Icons";
 import { TimeChart, monthTicks } from "../components/TimeChart";
-import { addMonths, monthLabel, monthTick, shortDate, thisMonth, todayStr } from "../lib/dates";
-import { byCategory, monthSum, netWorth, netWorthSeries, sourceColor } from "../lib/finance";
+import { TxnSheet } from "../components/TxnSheet";
+import type { Txn } from "../types";
+import { addMonths, monthLabel, monthOf, monthTick, shortDate, thisMonth, todayStr } from "../lib/dates";
+import { byCategory, monthSum, netWorth, netWorthSeries, sourceColor, upcomingPlans } from "../lib/finance";
 import { fmt } from "../lib/money";
 import { runAll, sum } from "../lib/projection";
 import { liveSources, liveTxns } from "../state/actions";
@@ -39,6 +41,7 @@ export function Overview() {
       <ExamplesNote />
       {sources.length > 0 && <NetWorth s={s} />}
       <ThisMonth s={s} />
+      <Upcoming s={s} />
       {sources.length > 0 && <Heading s={s} />}
     </>
   );
@@ -124,6 +127,55 @@ function ThisMonth({ s }: { s: AppState }) {
     </section>
   );
 }
+
+/** Purchases in payments that still have payments to come; a row opens the purchase. */
+function Upcoming({ s }: { s: AppState }) {
+  const D = s.settings.display;
+  const { plans, total, nextMonth } = useMemo(() => upcomingPlans(s), [s]);
+  const [open, setOpen] = useState<Txn | null>(null);
+  if (!plans.length) return null;
+  const nextName = monthLabel(addMonths(thisMonth(), 1)).split(" ")[0];
+  const money = (v: number, c: Txn["currency"]) => fmt(v, c, { cents: v % 1 !== 0 });
+  return (
+    <section className="card" aria-labelledby="up-title">
+      <div className="card-head">
+        <h2 id="up-title">Upcoming payments</h2>
+        <b>{fmt(total, D)} left</b>
+      </div>
+      <p className="muted small">
+        {plans.length === 1 ? "1 purchase" : `${plans.length} purchases`} still being paid off
+        {nextMonth > 0 ? <>; <b>{fmt(nextMonth, D)}</b> due in {nextName}.</> : "."}
+      </p>
+      <ul className="txn-list">
+        {plans.map(({ next, left, leftAmount, last }) => {
+          const ends = `Ends ${monthLabel(monthOf(last))}`;
+          const c = s.categories.find((x) => x.id === next.categoryId);
+          return (
+            <li key={next.plan!.id}>
+              <button type="button" className="txn-row" title={ends} onClick={() => setOpen(next)}>
+                <span className="txn-emoji" aria-hidden="true">{c?.emoji ?? "•"}</span>
+                <span className="txn-main">
+                  <span className="txn-title" dir="auto">{next.note || c?.name || "Purchase"}</span>
+                  <span className="muted small">
+                    Next {dayMonth(next.date)} · {left > 1 ? `${next.plan!.part} of ${next.plan!.parts}` : "the last payment"}
+                  </span>
+                </span>
+                <span className="txn-amt stacked">
+                  {money(next.amount, next.currency)}
+                  {left > 1 && <span className="muted small">{money(leftAmount, next.currency)} left</span>}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {open && <TxnSheet txn={open} onClose={() => setOpen(null)} />}
+    </section>
+  );
+}
+
+/** "1 Dec", with the year when it isn't this year */
+const dayMonth = (date: string) => { const d = shortDate(date); return date.slice(0, 4) === todayStr().slice(0, 4) ? d.slice(0, -5) : d; };
 
 function Heading({ s }: { s: AppState }) {
   const D = s.settings.display;

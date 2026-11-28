@@ -1,6 +1,6 @@
 /* Reading the state: balances, net worth, month sums. Pure functions of AppState. */
 import { liveSnapshots, liveSources, liveTxns } from "../state/actions";
-import type { AppState, Currency, Snapshot, Source, SourceKind, TxnKind } from "../types";
+import type { AppState, Currency, Snapshot, Source, SourceKind, Txn, TxnKind } from "../types";
 import { addMonths, monthDiff, monthEnd, monthOf, thisMonth, todayStr } from "./dates";
 import { convert } from "./money";
 
@@ -103,4 +103,38 @@ export function byCategory(s: AppState, ym: string, kind: TxnKind = "expense"): 
     m.set(t.categoryId, x);
   }
   return [...m.entries()].map(([categoryId, x]) => ({ categoryId, ...x })).sort((a, b) => b.total - a.total);
+}
+
+export interface UpcomingPlan {
+  /** the next payment still to come */
+  next: Txn;
+  /** payments still to come, and their sum in the purchase's currency */
+  left: number;
+  leftAmount: number;
+  /** the last payment's date */
+  last: string;
+}
+
+/** Purchases in payments with payments after today, the soonest first; `total` is what's left on all of them and
+    `nextMonth` what falls in next month, both in the display currency. */
+export function upcomingPlans(s: AppState, today = todayStr()): { plans: UpcomingPlan[]; total: number; nextMonth: number } {
+  const byPlan = new Map<string, Txn[]>();
+  for (const t of liveTxns(s)) {
+    if (!t.plan || t.date <= today) continue;
+    const xs = byPlan.get(t.plan.id) ?? [];
+    xs.push(t);
+    byPlan.set(t.plan.id, xs);
+  }
+  const next = addMonths(monthOf(today), 1);
+  let total = 0, nextMonth = 0;
+  const plans: UpcomingPlan[] = [];
+  for (const xs of byPlan.values()) {
+    xs.sort((a, b) => (a.date < b.date ? -1 : 1));
+    const leftAmount = xs.reduce((a, t) => a + t.amount, 0);
+    plans.push({ next: xs[0], left: xs.length, leftAmount, last: xs[xs.length - 1].date });
+    total += toDisplay(s, leftAmount, xs[0].currency);
+    for (const t of xs) if (t.date.startsWith(next)) nextMonth += toDisplay(s, t.amount, t.currency);
+  }
+  plans.sort((a, b) => (a.next.date < b.next.date ? -1 : a.next.date > b.next.date ? 1 : 0));
+  return { plans, total, nextMonth };
 }

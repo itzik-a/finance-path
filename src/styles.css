@@ -629,6 +629,8 @@ input[type="date"].text-input, input[type="month"].text-input { -webkit-appearan
 .txn-amt { flex: none; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .txn-amt.income { color: var(--pos); }
 .txn-amt.invest { color: var(--muted); }
+.txn-amt.stacked { display: grid; justify-items: end; gap: 1px; }
+.txn-amt.stacked .small { font-weight: 450; }
 .cat-bars { display: grid; gap: 12px; }
 .cat-bars li { display: grid; gap: 6px; }
 .cat-bar-head { display: flex; justify-content: space-between; gap: 10px; font-size: .92rem; }
