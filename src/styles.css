@@ -247,7 +247,9 @@ kbd {
    the page you're on is Bear's grey row, not a green tint. */
 @media (min-width: 768px) {
   :root[data-style="bear"] .sidebar {
-    --surface: var(--side-bg); --surface-2: var(--side-sel); --ink: var(--side-ink); --muted: var(--side-muted);
+    /* raised things (a picked segment) are Bear's grey row; wells behind them a faint wash; hairlines light on dark */
+    --surface: var(--side-bg); --surface-2: rgba(255, 255, 255, .07); --raised: var(--side-sel); --line: rgba(255, 255, 255, .08);
+    --ink: var(--side-ink); --muted: var(--side-muted);
     background: var(--side-bg); border-right-color: var(--side-edge); color: var(--side-ink); color-scheme: dark;
   }
   :root[data-style="bear"] .side-nav a:hover { background: rgba(255, 255, 255, .06); }
