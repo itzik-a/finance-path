@@ -12,7 +12,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
-    "check": "node scripts/check-compound.ts"
+    "check": "node scripts/check-compound.ts && node scripts/check-loan.ts"
   },
   "dependencies": {
     "react": "^19.3.1",

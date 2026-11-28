@@ -1,7 +1,8 @@
 /* Reading the state: balances, net worth, month sums. Pure functions of AppState. */
-import { dueIn, liveRecurring, liveSnapshots, liveSources, liveTxns, nextDue } from "../state/actions";
-import type { AppState, Currency, Recurring, Snapshot, Source, SourceKind, Txn, TxnKind } from "../types";
+import { dueIn, liveLoans, liveRecurring, liveSnapshots, liveSources, liveTxns, nextDue } from "../state/actions";
+import type { AppState, Currency, Loan, Recurring, Snapshot, Source, SourceKind, Txn, TxnKind } from "../types";
 import { addMonths, monthDiff, monthEnd, monthOf, thisMonth, todayStr } from "./dates";
+import { balanceOn, loanStatus, schedule, type LoanRow } from "./loan";
 import { convert } from "./money";
 
 export const KINDS: { id: SourceKind; label: string; returnPct: number }[] = [
@@ -35,18 +36,28 @@ export function balanceOf(s: AppState, sourceId: string, date?: string): Snapsho
 /** Amount in the display currency. */
 export const toDisplay = (s: AppState, amount: number, from: Currency) => convert(amount, from, s.settings.display, s.settings);
 
-/** Net worth now, in the display currency, and the oldest "as of" among the sources. */
-export function netWorth(s: AppState, date?: string): { total: number; asOf?: string } {
-  let total = 0;
+/** Net worth on a date (default today), in the display currency: what's invested (`assets`, the latest balances) less
+    what's owed on loans (`debts`, from their schedules); `asOf` is the oldest "as of" among the sources. */
+export function netWorth(s: AppState, date?: string): { total: number; assets: number; debts: number; asOf?: string } {
+  let assets = 0;
   let asOf: string | undefined;
   for (const src of liveSources(s)) {
     const b = balanceOf(s, src.id, date);
     if (!b) continue;
-    total += toDisplay(s, b.balance, src.currency);
+    assets += toDisplay(s, b.balance, src.currency);
     if (!asOf || b.date < asOf) asOf = b.date;
   }
-  return { total, asOf };
+  const debts = debtsOn(s, date ?? todayStr());
+  return { total: assets - debts, assets, debts, asOf };
 }
+
+/** What's owed on every loan on a date, in the display currency. */
+export function debtsOn(s: AppState, date: string, rows = loanRows(s)): number {
+  return liveLoans(s).reduce((a, l) => a + toDisplay(s, balanceOn(l, rows.get(l.id)!, date), l.currency), 0);
+}
+
+/** Each live loan's schedule, by loan id. */
+export const loanRows = (s: AppState) => new Map<string, LoanRow[]>(liveLoans(s).map((l) => [l.id, schedule(l, s.settings.prime)]));
 
 const dayNum = (date: string) => { const [y, m, d] = date.split("-").map(Number); return Date.UTC(y, m - 1, d) / 86_400_000; };
 
@@ -65,10 +76,10 @@ function valueOn(snaps: Snapshot[], date: string): number {
 
 /** Months from the first balance to this month, with each source's value at each month's end (drawn straight
     between recorded balances), in the display currency. `recorded[i]`: some source has a balance dated in month i. */
-export function netWorthSeries(s: AppState, maxMonths = 120): { months: string[]; recorded: boolean[]; bySource: { source: Source; values: number[] }[] } {
+export function netWorthSeries(s: AppState, maxMonths = 120): { months: string[]; recorded: boolean[]; bySource: { source: Source; values: number[] }[]; debts: number[] | null } {
   const sources = liveSources(s);
   const dates = liveSnapshots(s).map((x) => x.date).sort();
-  if (!dates.length) return { months: [], recorded: [], bySource: [] };
+  if (!dates.length) return { months: [], recorded: [], bySource: [], debts: null };
   const end = thisMonth();
   let start = monthOf(dates[0]);
   if (monthDiff(start, end) > maxMonths) start = addMonths(end, -maxMonths);
@@ -80,7 +91,10 @@ export function netWorthSeries(s: AppState, maxMonths = 120): { months: string[]
     const values = months.map((ym) => toDisplay(s, valueOn(snaps, ym === end ? todayStr() : monthEnd(ym)), source.currency));
     return { source, values };
   }).filter((x) => x.values.some((v) => v > 0));
-  return { months, recorded, bySource };
+  // what was owed on loans at each month's end (null when there are no loans)
+  const rows = loanRows(s);
+  const debts = rows.size ? months.map((ym) => debtsOn(s, ym === end ? todayStr() : monthEnd(ym), rows)) : null;
+  return { months, recorded, bySource, debts };
 }
 
 export interface MonthSum { income: number; expense: number; invest: number; net: number; rate: number | null }
@@ -109,7 +123,9 @@ export type UpcomingRow =
   /** a purchase in payments: its next payment, how many are left and their sum (the purchase's currency), the last one's date */
   | { kind: "plan"; date: string; next: Txn; left: number; leftAmount: number; last: string }
   /** a recurring expense: its next date */
-  | { kind: "recurring"; date: string; r: Recurring };
+  | { kind: "recurring"; date: string; r: Recurring }
+  /** a loan: its next payment and what's owed today (the loan's currency) */
+  | { kind: "loan"; date: string; loan: Loan; next: LoanRow; balance: number };
 
 /** What's still to pay: purchases in payments with payments after today, and recurring expenses with a next date,
     the soonest first. In the display currency: `owed`, what's left on the purchases; `restOfMonth`, what falls due
@@ -142,6 +158,19 @@ export function upcoming(s: AppState, today = todayStr()) {
     restOfMonth += dueIn(r, ym, today).length * amount;
     nextMonth += dueIn(r, next).length * amount;
   }
+  let owedLoans = 0, loans = 0;
+  for (const l of liveLoans(s)) {
+    const st = loanStatus(l, s.settings.prime, today);
+    if (!st.next) continue;
+    loans++;
+    rows.push({ kind: "loan", date: st.next.date, loan: l, next: st.next, balance: st.balance });
+    owedLoans += toDisplay(s, st.balance, l.currency);
+    for (const r of st.rows) {
+      if (r.date <= today) continue;
+      if (r.month === ym) restOfMonth += toDisplay(s, r.payment, l.currency);
+      else if (r.month === next) nextMonth += toDisplay(s, r.payment, l.currency);
+    }
+  }
   rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  return { rows, owed, purchases: byPlan.size, restOfMonth, nextMonth };
+  return { rows, owed, purchases: byPlan.size, owedLoans, loans, restOfMonth, nextMonth };
 }

@@ -120,13 +120,13 @@ function TxnRow({ s, t, onOpen, showDate }: { s: AppState; t: Txn; onOpen: (t: T
   const into = t.sourceId ? s.sources.find((x) => x.id === t.sourceId) : undefined;
   return (
     <li>
-      <button type="button" className="txn-row" onClick={() => onOpen(t)}>
+      <button type="button" className="txn-row" onClick={() => { if (t.loanId && s.loans.some((l) => l.id === t.loanId && !l.deletedAt)) location.hash = `#investments/loan/${t.loanId}`; else onOpen(t); }}>
         <span className="txn-emoji" aria-hidden="true">{c?.emoji ?? "•"}</span>
         <span className="txn-main">
           <span className="txn-title" dir="auto">{t.note || c?.name || KIND_LABEL[t.kind]}</span>
           <span className="muted small">
             {t.recurringId && <IconRepeat aria-label="Recurring" />}
-            {showDate ? `${dayLabel(t.date)} · ` : ""}{t.plan ? `Payment ${t.plan.part}/${t.plan.parts} · ` : ""}{c?.name ?? "No category"}{into ? ` → ${into.name}` : ""}
+            {showDate ? `${dayLabel(t.date)} · ` : ""}{t.plan ? `Payment ${t.plan.part}/${t.plan.parts} · ` : ""}{t.loanId && t.interest != null ? `${fmt(t.interest, t.currency)} interest · ` : ""}{c?.name ?? "No category"}{into ? ` → ${into.name}` : ""}
           </span>
         </span>
         <span className={`txn-amt ${t.kind}`}>{t.kind === "income" ? "+" : t.kind === "expense" ? "−" : ""}{fmt(t.amount, t.currency, { cents: t.amount % 1 !== 0 })}</span>

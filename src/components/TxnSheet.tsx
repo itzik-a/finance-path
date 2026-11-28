@@ -7,7 +7,7 @@ import { addRecurring, addTxn, deletePlan, deleteRecurring, deleteTxn, editRecur
 import { useAppState } from "../state/store";
 import type { Currency, Recurring, Txn, TxnKind } from "../types";
 import { IconRepeat } from "./Icons";
-import { AmountInput, Field, Seg, Select, Sheet, Stepper, Switch, closeSheet } from "./ui";
+import { AmountInput, Field, Seg, Select, Sheet, Switch, closeSheet } from "./ui";
 
 export const KIND_LABEL: Record<TxnKind, string> = { expense: "Expense", income: "Income", invest: "Invested" };
 
@@ -44,6 +44,7 @@ export function TxnSheet({ txn, recurring, newRecurring, defaultKind = "expense"
       repeat: isRec, every: recurring?.every ?? "month", end: recurring?.end ?? "", parts: txn?.plan?.parts ?? 1,
     };
   });
+  const [partsText, setPartsText] = useState(() => String(txn?.plan?.parts ?? 1));
   const [tried, setTried] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
@@ -97,10 +98,15 @@ export function TxnSheet({ txn, recurring, newRecurring, defaultKind = "expense"
         </div>
 
         {payable && (
-          <div className="payments">
-            <Stepper label="Payments" value={d.parts} min={1} max={36} step={1} onChange={(v) => set("parts", v)} format={(v) => (v === 1 ? "1 (at once)" : String(v))} />
-            {parts > 1 && <p className="muted small">{planSummary(d.amount, parts, d.currency, d.date)}</p>}
-          </div>
+          <Field label="Payments" id="tx-parts" hint={parts > 1 ? planSummary(d.amount, parts, d.currency, d.date) : "1 is paid at once; up to 120 monthly payments."}>
+            <input id="tx-parts" className="text-input parts-input" inputMode="numeric" pattern="[0-9]*" autoComplete="off" value={partsText}
+              onChange={(e) => {
+                const n = Math.min(120, Number(e.target.value.replace(/\D/g, "").slice(0, 3)) || 0);
+                setPartsText(n ? String(n) : "");
+                set("parts", Math.max(1, n));
+              }}
+              onBlur={() => setPartsText(String(d.parts))} />
+          </Field>
         )}
 
         <div className="field">

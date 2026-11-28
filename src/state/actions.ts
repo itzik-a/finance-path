@@ -3,17 +3,19 @@
 import { addMonths, monthDiff, monthEnd, monthOf, todayStr } from "../lib/dates";
 import { showToast } from "../lib/toast";
 import { uid } from "../lib/uid";
-import type { AppState, Category, Recurring, Settings, Snapshot, Source, Txn } from "../types";
+import { schedule } from "../lib/loan";
+import type { AppState, Category, Loan, Recurring, Settings, Snapshot, Source, Txn } from "../types";
 import { getState, update } from "./store";
 
 type Item = { id: string; updatedAt: number; deletedAt?: number; example?: boolean };
-type ListKey = "sources" | "snapshots" | "txns" | "categories" | "recurring";
+type ListKey = "sources" | "snapshots" | "txns" | "categories" | "recurring" | "loans";
 
 const live = <T extends { deletedAt?: number }>(xs: T[]) => xs.filter((x) => !x.deletedAt);
 export const liveSources = (s: AppState) => live(s.sources);
 export const liveCategories = (s: AppState) => live(s.categories);
 export const liveTxns = (s: AppState) => live(s.txns);
 export const liveRecurring = (s: AppState) => live(s.recurring);
+export const liveLoans = (s: AppState) => live(s.loans);
 export const liveSnapshots = (s: AppState) => live(s.snapshots).filter((x) => s.sources.some((src) => src.id === x.sourceId && !src.deletedAt));
 
 function edit<K extends ListKey>(key: K, id: string, fn: (x: AppState[K][number]) => void) {
@@ -80,7 +82,7 @@ export const deleteSnapshot = (id: string) => softDelete("snapshots", id, "the b
 
 // ── transactions ──────────────────────────────────────────────
 
-export type TxnInput = Omit<Txn, "id" | "updatedAt" | "example" | "deletedAt" | "recurringId" | "plan">;
+export type TxnInput = Omit<Txn, "id" | "updatedAt" | "example" | "deletedAt" | "recurringId" | "plan" | "loanId" | "interest">;
 
 export function addTxn(t: TxnInput) {
   const id = uid();
@@ -248,6 +250,95 @@ export function applyRecurring() {
     }
   }
   if (add.length) update((d) => { d.txns.push(...add); });
+  applyLoans();
+}
+
+// ── loans ─────────────────────────────────────────────────────
+
+export type LoanInput = Omit<Loan, "id" | "updatedAt" | "deletedAt">;
+
+export function addLoan(l: LoanInput) {
+  const id = uid();
+  update((d) => { d.loans.push({ ...l, name: l.name.trim() || "Loan", note: l.note?.trim() || undefined, id, updatedAt: Date.now() }); });
+  applyLoans();
+  return id;
+}
+
+export function editLoan(id: string, fn: (l: Loan) => void) {
+  edit("loans", id, fn);
+  applyLoans();
+}
+
+/** Remove a loan and the payments it added, with one Undo. */
+export function deleteLoan(id: string) {
+  const s = getState();
+  const name = s.loans.find((l) => l.id === id)?.name ?? "the loan";
+  const ids = s.txns.filter((t) => t.loanId === id && !t.deletedAt).map((t) => t.id);
+  update((d) => {
+    const now = Date.now();
+    const l = d.loans.find((x) => x.id === id);
+    if (l) { l.deletedAt = now; l.updatedAt = now; }
+    for (const t of d.txns) if (ids.includes(t.id)) { t.deletedAt = now; t.updatedAt = now; }
+  });
+  showToast(`Removed ${name}`, {
+    label: "Undo",
+    run: () => update((d) => {
+      const now = Date.now();
+      const l = d.loans.find((x) => x.id === id);
+      if (l) { delete l.deletedAt; l.updatedAt = now; }
+      for (const t of d.txns) if (ids.includes(t.id)) { delete t.deletedAt; t.updatedAt = now; }
+    }),
+  });
+}
+
+/** Record a balance from a statement: what was left after that month's payment (replaces one for the same month). */
+export function setLoanBalance(id: string, month: string, balance: number) {
+  editLoan(id, (l) => { l.balances = [...(l.balances ?? []).filter((b) => b.month !== month), { month, balance }].sort((a, b) => (a.month < b.month ? -1 : 1)); });
+}
+
+export function deleteLoanBalance(id: string, month: string) {
+  editLoan(id, (l) => { l.balances = (l.balances ?? []).filter((b) => b.month !== month); if (!l.balances.length) delete l.balances; });
+}
+
+/** The prime rate from a month on (replaces a change in the same month). Every prime loan follows. */
+export function setPrime(from: string, pct: number) {
+  setSettings((x) => { x.prime = [...(x.prime ?? []).filter((p) => p.from !== from), { from, pct }].sort((a, b) => (a.from < b.from ? -1 : 1)); });
+  applyLoans();
+}
+
+export function deletePrime(from: string) {
+  setSettings((x) => { x.prime = (x.prime ?? []).filter((p) => p.from !== from); });
+  applyLoans();
+}
+
+/** Keep each loan's payments in Cash flow in step with its schedule: every payment due by today, from the loan's
+    `addFrom` month, is an expense with the id `l_<loan id>_<YYYY-MM>` (so two devices write the same ones), updated
+    when the schedule changes (a new prime rate, a statement, an edit) and removed when it no longer has that month.
+    A payment removed from Cash flow by hand stays removed. Called with applyRecurring() and after loan changes. */
+export function applyLoans(today = todayStr()) {
+  const s = getState();
+  const want = new Map<string, Txn>();
+  for (const l of liveLoans(s)) {
+    for (const r of schedule(l, s.settings.prime)) {
+      if (r.date > today || r.month < l.addFrom) continue;
+      const id = `l_${l.id}_${r.month}`;
+      want.set(id, { id, kind: "expense", date: r.date, amount: r.payment, currency: l.currency, categoryId: l.categoryId, note: l.name, loanId: l.id, interest: r.interest, updatedAt: 0 });
+    }
+  }
+  const same = (a: Txn, b: Txn) => a.date === b.date && a.amount === b.amount && a.currency === b.currency && a.categoryId === b.categoryId && a.note === b.note && a.interest === b.interest;
+  const have = new Map(s.txns.filter((t) => t.loanId).map((t) => [t.id, t]));
+  const changes = [...want.values()].some((t) => !have.has(t.id) || (!have.get(t.id)!.deletedAt && !same(have.get(t.id)!, t)))
+    || [...have.values()].some((t) => !t.deletedAt && !want.has(t.id));
+  if (!changes) return;
+  update((d) => {
+    const now = Date.now();
+    for (const [id, t] of want) {
+      const at = d.txns.findIndex((x) => x.id === id);
+      if (at < 0) d.txns.push({ ...t, updatedAt: now });
+      else if (!d.txns[at].deletedAt && !same(d.txns[at], t)) d.txns[at] = { ...t, updatedAt: now };
+    }
+    for (const t of d.txns) if (t.loanId && !t.deletedAt && !want.has(t.id)) { t.deletedAt = now; t.updatedAt = now; }
+  });
 }
 
 // ── settings ──────────────────────────────────────────────────

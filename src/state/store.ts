@@ -39,6 +39,7 @@ export function normalize(s: unknown): AppState {
     txns: arr(x.txns, d.txns),
     categories: withSeedCategories(arr(x.categories, d.categories)),
     recurring: arr(x.recurring, d.recurring),
+    loans: arr(x.loans, []),
     settings: { ...DEFAULT_SETTINGS, ...obj<AppState["settings"]>(x.settings) },
     updatedAt: x.updatedAt || 0,
   };

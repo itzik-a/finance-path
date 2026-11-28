@@ -102,6 +102,7 @@ export function seedState(): AppState {
     txns: structuredClone(SEED_TXNS),
     categories: structuredClone(SEED_CATEGORIES),
     recurring: structuredClone(SEED_RECURRING),
+    loans: [],
     settings: { ...DEFAULT_SETTINGS },
     updatedAt: 0,
   };

@@ -27,6 +27,8 @@ interface Props {
   xTicks: number[];
   series: ChartSeries[];
   stacked?: boolean;
+  /** a line drawn over stacked areas (e.g. net worth less loans), with its own tooltip row and legend key */
+  overlay?: ChartSeries;
   /** a shaded range drawn behind the lines (e.g. low–high scenarios) */
   band?: { lo: (number | null)[]; hi: (number | null)[]; label: string; color: string };
   /** dots for actual values (e.g. recorded balances) */
@@ -74,7 +76,7 @@ export function monthTicks(firstMonth: string, n: number, max = 5): number[] {
   return out;
 }
 
-export function TimeChart({ n, xLabel, xTick, xTicks, series, stacked, band, points, today, format, tick, title, height = 230, endLabels, legend, dots = true, zero = true }: Props) {
+export function TimeChart({ n, xLabel, xTick, xTicks, series, stacked, overlay, band, points, today, format, tick, title, height = 230, endLabels, legend, dots = true, zero = true }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(600);
   const [active, setActive] = useState<number | null>(null);
@@ -101,7 +103,7 @@ export function TimeChart({ n, xLabel, xTick, xTicks, series, stacked, band, poi
   const all: number[] = [];
   const push = (xs: (number | null)[] | undefined) => xs?.forEach((v) => { if (v != null && Number.isFinite(v)) all.push(v); });
   if (stacked) tops.forEach(push); else series.forEach((s) => push(s.values));
-  push(band?.hi); push(band?.lo); push(points?.values);
+  push(band?.hi); push(band?.lo); push(points?.values); push(overlay?.values);
   const fit = !zero && !stacked;
   const maxV = Math.max(...all, fit ? -Infinity : 0);
   const minV = Math.min(...all, fit ? Infinity : 0);
@@ -168,7 +170,7 @@ export function TimeChart({ n, xLabel, xTick, xTicks, series, stacked, band, poi
 
   const a = active;
   const tipLeft = a != null ? Math.min(Math.max(x(a), 90), w - 90) : 0;
-  const showLegend = legend ?? (series.length >= 2 || !!band || !!points);
+  const showLegend = legend ?? (series.length >= 2 || !!band || !!points || !!overlay);
   const lastTotal = totals ? totals[lastIdx(totals)] : series[0].values[lastIdx(series[0].values)];
 
   return (
@@ -214,6 +216,7 @@ export function TimeChart({ n, xLabel, xTick, xTicks, series, stacked, band, poi
           {!stacked && dots && series.length === 1 && (n <= 40 || series[0].connect) && series[0].values.map((v, i) => v != null && (
             <circle key={i} className="chart-dot" cx={x(i)} cy={y(v)} r={4} style={{ fill: series[0].color }} />
           ))}
+          {overlay && <path className={`chart-line${overlay.dashed ? " dashed" : ""}`} d={linePath(overlay.values, overlay.connect)} style={{ stroke: overlay.color }} />}
           {points?.values.map((v, i) => v != null && <circle key={`p${i}`} className="chart-point" cx={x(i)} cy={y(v)} r={4} />)}
 
           {a != null && <line className="chart-cross" x1={x(a)} x2={x(a)} y1={padT - 4} y2={y(bottom)} />}
@@ -223,6 +226,7 @@ export function TimeChart({ n, xLabel, xTick, xTicks, series, stacked, band, poi
           {a != null && stacked && tops.map((t, k) => t[a] != null && (
             <circle key={k} className="chart-dot" cx={x(a)} cy={y(t[a]!)} r={4} style={{ fill: series[k].color }} />
           ))}
+          {a != null && overlay && overlay.values[a] != null && <circle className="chart-dot" cx={x(a)} cy={y(overlay.values[a]!)} r={4} style={{ fill: overlay.color }} />}
           {ends.map((e) => (
             <text key={e.id} className="chart-end" x={x(e.i)} y={e.yy - 10} textAnchor={n === 1 ? "middle" : "end"}>{format(e.v)}</text>
           ))}
@@ -231,6 +235,9 @@ export function TimeChart({ n, xLabel, xTick, xTicks, series, stacked, band, poi
           <div className="chart-tip" style={{ left: tipLeft }} role="status">
             <span className="tip-head">{xLabel(a)}</span>
             {stacked && totals && <span className="tip-row total"><b>{format(totals[a] ?? 0)}</b><span>Total</span></span>}
+            {overlay && overlay.values[a] != null && (
+              <span className="tip-row total"><i className={`key-line${overlay.dashed ? " dashed" : ""}`} style={{ background: overlay.color, color: overlay.color }} /><b>{format(overlay.values[a]!)}</b><span>{overlay.label}</span></span>
+            )}
             {[...series].reverse().map((s) => s.values[a] != null && (
               <span key={s.id} className="tip-row">
                 <i className={`key-line${s.dashed ? " dashed" : ""}`} style={{ background: s.color, color: s.color }} />
@@ -255,6 +262,7 @@ export function TimeChart({ n, xLabel, xTick, xTicks, series, stacked, band, poi
               {s.label}
             </li>
           ))}
+          {overlay && <li><i className={`key-line${overlay.dashed ? " dashed" : ""}`} style={{ background: overlay.color, color: overlay.color }} />{overlay.label}</li>}
           {band && <li><i className="key-band" style={{ background: band.color }} />{band.label}</li>}
           {points && <li><i className="key-point" />{points.label}</li>}
         </ul>

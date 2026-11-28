@@ -61,6 +61,9 @@ export interface Txn {
   note?: string;
   /** made by this recurring item (id = `r_<recurring id>_<YYYY-MM or YYYY>`) */
   recurringId?: string;
+  /** a loan's monthly payment (id = `l_<loan id>_<YYYY-MM>`), made from the loan's schedule; `interest` is its interest part */
+  loanId?: string;
+  interest?: number;
   /** one monthly payment of a purchase split into payments (id = `p_<plan id>_<part>`); `total` is the full price */
   plan?: { id: string; part: number; parts: number; total: number };
   example?: boolean;
@@ -101,6 +104,39 @@ export interface Recurring {
   deletedAt?: number;
 }
 
+/** The prime rate from a month on ("YYYY-MM"); the first one also covers the months before it. */
+export interface PrimeRate {
+  from: string;
+  pct: number;
+}
+
+/** Money borrowed and paid back in monthly Shpitzer payments (fixed payment, recalculated when the rate changes).
+    Its schedule (src/lib/loan.ts) gives each month's payment, interest and balance; due payments become expenses. */
+export interface Loan {
+  id: string;
+  name: string;
+  currency: Currency;
+  /** the amount borrowed */
+  principal: number;
+  /** the first payment's date; the others fall on its day of the month (or the month's last day) */
+  first: string;
+  /** number of monthly payments */
+  months: number;
+  /** fixed rate, or prime + margin (the prime rate's history is `settings.prime`) */
+  rate: "fixed" | "prime";
+  /** fixed: the yearly rate in percent; prime: the margin over prime (may be below zero) */
+  ratePct: number;
+  /** the expense category its payments get */
+  categoryId: string;
+  /** first month ("YYYY-MM") whose payment is added to Cash flow; earlier ones are only in the schedule */
+  addFrom: string;
+  /** balances from statements: what was left after that month's payment; the schedule continues from them */
+  balances?: { month: string; balance: number }[];
+  note?: string;
+  updatedAt: number;
+  deletedAt?: number;
+}
+
 export interface Settings {
   /** currency totals are shown in */
   display: Currency;
@@ -114,6 +150,8 @@ export interface Settings {
   inflationPct: number;
   /** low / high scenarios: expected return − / + this many percentage points */
   spreadPct: number;
+  /** the prime rate's history, for prime-linked loans, oldest first */
+  prime?: PrimeRate[];
   updatedAt: number;
 }
 
@@ -124,6 +162,7 @@ export interface AppState {
   txns: Txn[];
   categories: Category[];
   recurring: Recurring[];
+  loans: Loan[];
   settings: Settings;
   updatedAt: number;
 }

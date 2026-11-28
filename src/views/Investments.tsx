@@ -1,4 +1,5 @@
-/* Investments: the sources with their latest balance (#investments), and one source's page (#investments/<id>). */
+/* Investments: the sources with their latest balance and the loans (#investments), one source's page
+   (#investments/<id>) and one loan's page (#investments/loan/<id>, src/views/LoanPage.tsx). */
 import { useState } from "react";
 import { ExamplesNote } from "../components/ExamplesNote";
 import { IconBack, IconEdit, IconNext, IconPlus } from "../components/Icons";
@@ -11,10 +12,13 @@ import { balanceOf, kindLabel, netWorth, snapshotsOf, sourceColor, toDisplay } f
 import { fmt, pct } from "../lib/money";
 import { deleteSource, liveSources } from "../state/actions";
 import { useAppState, type AppState } from "../state/store";
+import { LoanList, LoanPage } from "./LoanPage";
 import type { Snapshot, Source } from "../types";
 
 export function Investments({ sub }: { sub?: string }) {
   const s = useAppState();
+  const loan = sub?.startsWith("loan/") ? s.loans.find((x) => x.id === sub.slice(5) && !x.deletedAt) : undefined;
+  if (loan) return <LoanPage s={s} loan={loan} />;
   const src = sub ? s.sources.find((x) => x.id === sub && !x.deletedAt) : undefined;
   if (sub && src) return <SourcePage s={s} source={src} />;
   return <SourceList s={s} />;
@@ -31,7 +35,7 @@ function SourceList({ s }: { s: AppState }) {
       <header className="page-head row-head">
         <div>
           <h1 className="display">Investments</h1>
-          {sources.length > 0 && <p className="muted">{fmt(nw.total, D)} in {sources.length} {sources.length === 1 ? "place" : "places"}</p>}
+          {sources.length > 0 && <p className="muted">{fmt(nw.assets, D)} in {sources.length} {sources.length === 1 ? "place" : "places"}</p>}
         </div>
         <button type="button" className="btn primary sm" onClick={() => setAdding(true)}><IconPlus /> Add</button>
       </header>
@@ -45,9 +49,10 @@ function SourceList({ s }: { s: AppState }) {
         </section>
       ) : (
         <ul className="src-list">
-          {sources.map((x) => <li key={x.id}><SourceRow s={s} source={x} total={nw.total} /></li>)}
+          {sources.map((x) => <li key={x.id}><SourceRow s={s} source={x} total={nw.assets} /></li>)}
         </ul>
       )}
+      <LoanList s={s} />
       {adding && <SourceSheet onClose={() => setAdding(false)} onSaved={(id) => { location.hash = `#investments/${id}`; }} />}
     </>
   );

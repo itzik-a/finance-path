@@ -1,5 +1,5 @@
 /* Merging two copies of the state (this device and the gist). Type-only imports, so it can be tested alone.
-   - every list (sources, snapshots, txns, categories, recurring): per item, the newer `updatedAt` wins
+   - every list (sources, snapshots, txns, categories, recurring, loans): per item, the newer `updatedAt` wins
      (soft deletes win the same way)
    - settings: the copy with the newer `settings.updatedAt` */
 import type { AppState } from "../types";
@@ -22,6 +22,7 @@ export function merge(local: AppState, remote: AppState): AppState {
     txns: byId(local.txns, remote.txns),
     categories: byId(local.categories, remote.categories),
     recurring: byId(local.recurring, remote.recurring),
+    loans: byId(local.loans ?? [], remote.loans ?? []),
     settings: (remote.settings.updatedAt || 0) > (local.settings.updatedAt || 0) ? remote.settings : local.settings,
     updatedAt: Math.max(local.updatedAt || 0, remote.updatedAt || 0),
   };
