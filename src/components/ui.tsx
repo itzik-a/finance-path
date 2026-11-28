@@ -123,6 +123,16 @@ export function Select<T extends string>({ value, onChange, options, id, label }
 /** A modal sheet (bottom sheet on phones, centred dialog on wider screens). */
 export function Sheet({ title, onClose, children, actions, wide }: { title: string; onClose: () => void; children: ReactNode; actions?: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // Tapping the dimmed backdrop closes the sheet. The dialog element is also the target of a click on its own
+  // scrollbar, on a gap in the sheet, or of a text selection that ends outside a field, so a close needs both the
+  // press and the release outside the sheet's box (the backdrop is everything around it).
+  const downOnBackdrop = useRef(false);
+  const onBackdrop = (e: { target: EventTarget; clientX: number; clientY: number }) => {
+    const d = ref.current;
+    if (!d || e.target !== d) return false;
+    const r = d.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
   useEffect(() => {
     const d = ref.current;
     d?.showModal();
@@ -133,7 +143,9 @@ export function Sheet({ title, onClose, children, actions, wide }: { title: stri
     return () => document.documentElement.classList.remove("sheet-open");
   }, []);
   return (
-    <dialog ref={ref} className={`dlg${wide ? " wide" : ""}`} aria-labelledby="sheet-title" onClose={onClose} onClick={(e) => { if (e.target === ref.current) ref.current.close(); }}>
+    <dialog ref={ref} className={`dlg${wide ? " wide" : ""}`} aria-labelledby="sheet-title" onClose={onClose}
+      onPointerDown={(e) => { downOnBackdrop.current = onBackdrop(e); }}
+      onClick={(e) => { if (downOnBackdrop.current && onBackdrop(e)) ref.current?.close(); downOnBackdrop.current = false; }}>
       <div className="dlg-body">
         <div className="dlg-grip" aria-hidden="true" />
         <div className="card-head">
