@@ -214,6 +214,23 @@ export function dueDates(r: Recurring, today = todayStr()): { key: string; date:
   return out;
 }
 
+/** The first date after today a recurring item is due on; none once it has ended. */
+export function nextDue(r: Recurring, today = todayStr()): string | undefined {
+  const day = pad(Math.min(28, Math.max(1, r.day)));
+  const from = r.start > today ? r.start : today;
+  for (let i = 0; i < 14; i++) {
+    const ym = addMonths(monthOf(from), i);
+    if (r.every === "year" && Number(ym.slice(5, 7)) !== Math.min(12, Math.max(1, r.month ?? 1))) continue;
+    const date = `${ym}-${day}`;
+    if (date > today && date >= r.start) return r.end && date > r.end ? undefined : date;
+  }
+  return undefined;
+}
+
+/** The dates a recurring item is due on within a month ("YYYY-MM"), after `after` (a date) when given. */
+export const dueIn = (r: Recurring, ym: string, after = "") =>
+  dueDates(r, monthEnd(ym)).filter((x) => x.date.startsWith(ym) && x.date > after).map((x) => x.date);
+
 /** Add the transactions recurring items are due for. Ids are fixed (`r_<id>_<period>`), so two devices
     add the same ones, and a deleted one stays deleted. Called on start, after sync and after edits. */
 export function applyRecurring() {

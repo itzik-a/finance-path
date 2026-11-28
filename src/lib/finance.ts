@@ -1,6 +1,6 @@
 /* Reading the state: balances, net worth, month sums. Pure functions of AppState. */
-import { liveSnapshots, liveSources, liveTxns } from "../state/actions";
-import type { AppState, Currency, Snapshot, Source, SourceKind, Txn, TxnKind } from "../types";
+import { dueIn, liveRecurring, liveSnapshots, liveSources, liveTxns, nextDue } from "../state/actions";
+import type { AppState, Currency, Recurring, Snapshot, Source, SourceKind, Txn, TxnKind } from "../types";
 import { addMonths, monthDiff, monthEnd, monthOf, thisMonth, todayStr } from "./dates";
 import { convert } from "./money";
 
@@ -105,36 +105,43 @@ export function byCategory(s: AppState, ym: string, kind: TxnKind = "expense"): 
   return [...m.entries()].map(([categoryId, x]) => ({ categoryId, ...x })).sort((a, b) => b.total - a.total);
 }
 
-export interface UpcomingPlan {
-  /** the next payment still to come */
-  next: Txn;
-  /** payments still to come, and their sum in the purchase's currency */
-  left: number;
-  leftAmount: number;
-  /** the last payment's date */
-  last: string;
-}
+export type UpcomingRow =
+  /** a purchase in payments: its next payment, how many are left and their sum (the purchase's currency), the last one's date */
+  | { kind: "plan"; date: string; next: Txn; left: number; leftAmount: number; last: string }
+  /** a recurring expense: its next date */
+  | { kind: "recurring"; date: string; r: Recurring };
 
-/** Purchases in payments with payments after today, the soonest first; `total` is what's left on all of them and
-    `nextMonth` what falls in next month, both in the display currency. */
-export function upcomingPlans(s: AppState, today = todayStr()): { plans: UpcomingPlan[]; total: number; nextMonth: number } {
+/** What's still to pay: purchases in payments with payments after today, and recurring expenses with a next date,
+    the soonest first. In the display currency: `owed`, what's left on the purchases; `restOfMonth`, what falls due
+    after today this month; `nextMonth`, what falls due next month. */
+export function upcoming(s: AppState, today = todayStr()) {
+  const ym = monthOf(today), next = addMonths(ym, 1);
+  const rows: UpcomingRow[] = [];
+  let owed = 0, restOfMonth = 0, nextMonth = 0;
   const byPlan = new Map<string, Txn[]>();
   for (const t of liveTxns(s)) {
     if (!t.plan || t.date <= today) continue;
-    const xs = byPlan.get(t.plan.id) ?? [];
-    xs.push(t);
-    byPlan.set(t.plan.id, xs);
+    byPlan.set(t.plan.id, [...(byPlan.get(t.plan.id) ?? []), t]);
   }
-  const next = addMonths(monthOf(today), 1);
-  let total = 0, nextMonth = 0;
-  const plans: UpcomingPlan[] = [];
   for (const xs of byPlan.values()) {
     xs.sort((a, b) => (a.date < b.date ? -1 : 1));
     const leftAmount = xs.reduce((a, t) => a + t.amount, 0);
-    plans.push({ next: xs[0], left: xs.length, leftAmount, last: xs[xs.length - 1].date });
-    total += toDisplay(s, leftAmount, xs[0].currency);
-    for (const t of xs) if (t.date.startsWith(next)) nextMonth += toDisplay(s, t.amount, t.currency);
+    rows.push({ kind: "plan", date: xs[0].date, next: xs[0], left: xs.length, leftAmount, last: xs[xs.length - 1].date });
+    owed += toDisplay(s, leftAmount, xs[0].currency);
+    for (const t of xs) {
+      if (t.date.startsWith(ym)) restOfMonth += toDisplay(s, t.amount, t.currency);
+      else if (t.date.startsWith(next)) nextMonth += toDisplay(s, t.amount, t.currency);
+    }
   }
-  plans.sort((a, b) => (a.next.date < b.next.date ? -1 : a.next.date > b.next.date ? 1 : 0));
-  return { plans, total, nextMonth };
+  for (const r of liveRecurring(s)) {
+    if (r.kind !== "expense") continue;
+    const date = nextDue(r, today);
+    if (!date) continue;
+    rows.push({ kind: "recurring", date, r });
+    const amount = toDisplay(s, r.amount, r.currency);
+    restOfMonth += dueIn(r, ym, today).length * amount;
+    nextMonth += dueIn(r, next).length * amount;
+  }
+  rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return { rows, owed, purchases: byPlan.size, restOfMonth, nextMonth };
 }

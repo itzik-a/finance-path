@@ -1,12 +1,12 @@
-/* Overview (#overview): net worth now and over time, this month's money, purchases still being paid off, and where it's heading. */
+/* Overview (#overview): net worth now and over time, this month's money, what's coming up to pay (purchases in payments, recurring expenses), and where it's heading. */
 import { useMemo, useState } from "react";
 import { ExamplesNote } from "../components/ExamplesNote";
-import { IconNext, IconPlus } from "../components/Icons";
+import { IconNext, IconPlus, IconRepeat } from "../components/Icons";
 import { TimeChart, monthTicks } from "../components/TimeChart";
 import { TxnSheet } from "../components/TxnSheet";
-import type { Txn } from "../types";
+import type { Recurring, Txn } from "../types";
 import { addMonths, monthLabel, monthOf, monthTick, shortDate, thisMonth, todayStr } from "../lib/dates";
-import { byCategory, monthSum, netWorth, netWorthSeries, sourceColor, upcomingPlans } from "../lib/finance";
+import { byCategory, monthSum, netWorth, netWorthSeries, sourceColor, upcoming } from "../lib/finance";
 import { fmt } from "../lib/money";
 import { runAll, sum } from "../lib/projection";
 import { liveSources, liveTxns } from "../state/actions";
@@ -128,48 +128,57 @@ function ThisMonth({ s }: { s: AppState }) {
   );
 }
 
-/** Purchases in payments that still have payments to come; a row opens the purchase. */
+/** Purchases in payments that still have payments to come, and recurring expenses, by date; a row opens it. */
 function Upcoming({ s }: { s: AppState }) {
   const D = s.settings.display;
-  const { plans, total, nextMonth } = useMemo(() => upcomingPlans(s), [s]);
-  const [open, setOpen] = useState<Txn | null>(null);
-  if (!plans.length) return null;
-  const nextName = monthLabel(addMonths(thisMonth(), 1)).split(" ")[0];
+  const { rows, owed, purchases, restOfMonth, nextMonth } = useMemo(() => upcoming(s), [s]);
+  const [open, setOpen] = useState<{ txn?: Txn; recurring?: Recurring } | null>(null);
+  if (!rows.length) return null;
+  const ym = thisMonth();
+  const name = (m: string) => monthLabel(m).split(" ")[0];
   const money = (v: number, c: Txn["currency"]) => fmt(v, c, { cents: v % 1 !== 0 });
   return (
     <section className="card" aria-labelledby="up-title">
       <div className="card-head">
         <h2 id="up-title">Upcoming payments</h2>
-        <b>{fmt(total, D)} left</b>
+        <b title={`Due in ${monthLabel(addMonths(ym, 1))}`}>{fmt(nextMonth, D)} in {monthLabel(addMonths(ym, 1), true).split(" ")[0]}</b>
       </div>
-      <p className="muted small">
-        {plans.length === 1 ? "1 purchase" : `${plans.length} purchases`} still being paid off
-        {nextMonth > 0 ? <>; <b>{fmt(nextMonth, D)}</b> due in {nextName}.</> : "."}
-      </p>
+      {(restOfMonth > 0 || purchases > 0) && (
+        <p className="muted small">
+          {restOfMonth > 0 && <><b>{fmt(restOfMonth, D)}</b> more due in {name(ym)}. </>}
+          {purchases > 0 && <><b>{fmt(owed, D)}</b> still owed on {purchases === 1 ? "1 purchase" : `${purchases} purchases`} in payments.</>}
+        </p>
+      )}
       <ul className="txn-list">
-        {plans.map(({ next, left, leftAmount, last }) => {
-          const ends = `Ends ${monthLabel(monthOf(last))}`;
-          const c = s.categories.find((x) => x.id === next.categoryId);
+        {rows.map((row) => {
+          const src = row.kind === "plan" ? row.next : row.r;
+          const c = s.categories.find((x) => x.id === src.categoryId);
           return (
-            <li key={next.plan!.id}>
-              <button type="button" className="txn-row" title={ends} onClick={() => setOpen(next)}>
+            <li key={row.kind === "plan" ? row.next.plan!.id : row.r.id}>
+              <button type="button" className="txn-row" onClick={() => setOpen(row.kind === "plan" ? { txn: row.next } : { recurring: row.r })}>
                 <span className="txn-emoji" aria-hidden="true">{c?.emoji ?? "•"}</span>
                 <span className="txn-main">
-                  <span className="txn-title" dir="auto">{next.note || c?.name || "Purchase"}</span>
+                  <span className="txn-title" dir="auto">{src.note || c?.name || "Payment"}</span>
                   <span className="muted small">
-                    Next {dayMonth(next.date)} · {left > 1 ? `${next.plan!.part} of ${next.plan!.parts}` : "the last payment"}
+                    <span className="inline-icon">
+                      {row.kind === "recurring" && <IconRepeat aria-label="Recurring" width={14} height={14} />}
+                      Next {dayMonth(row.date)} · {row.kind === "plan"
+                        ? (row.left > 1 ? `${row.next.plan!.part} of ${row.next.plan!.parts}` : "the last payment")
+                        : row.r.every === "month" ? "monthly" : "yearly"}
+                    </span>
                   </span>
                 </span>
                 <span className="txn-amt stacked">
-                  {money(next.amount, next.currency)}
-                  {left > 1 && <span className="muted small">{money(leftAmount, next.currency)} left</span>}
+                  {money(src.amount, src.currency)}
+                  {row.kind === "plan" && row.left > 1 && <span className="muted small">{money(row.leftAmount, src.currency)} left</span>}
+                  {row.kind === "recurring" && row.r.end && <span className="muted small">until {monthLabel(monthOf(row.r.end), true)}</span>}
                 </span>
               </button>
             </li>
           );
         })}
       </ul>
-      {open && <TxnSheet txn={open} onClose={() => setOpen(null)} />}
+      {open && <TxnSheet txn={open.txn} recurring={open.recurring} onClose={() => setOpen(null)} />}
     </section>
   );
 }
